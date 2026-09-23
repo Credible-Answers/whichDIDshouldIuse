@@ -13,12 +13,22 @@ whichDIDshouldIuse patents subclass year twea
 ```
 
 ```
+Groups dropped for missing baseline (d at t=1, cal 1900): 0  (7248 -> 7248)
+Groups dropped for pre-treatment violations: 0  (7248 -> 7248)
+
+----------------------------------------------------------------------
   DESIGN: Classical DID Design (CLA)
+----------------------------------------------------------------------
   Binary and absorbing treatment, no variation in treatment
   timing: all 336 treated group(s) experience treatment at
   t=1919 (period 20), and 6912 group(s) never switch.
   Estimator: static / event-study TWFE
+  See Chapter 3 of the DID textbook (de Chaisemartin and
+  D'Haultfoeuille).
+----------------------------------------------------------------------
 ```
+
+Add `, detail` to also see the panel summary and the full diagnostics table.
 
 Design definitions follow **de Chaisemartin & D'Haultfœuille**.
 
@@ -37,7 +47,7 @@ Design definitions follow **de Chaisemartin & D'Haultfœuille**.
 ## Syntax
 
 ```stata
-whichDIDshouldIuse Y G T D
+whichDIDshouldIuse Y G T D [, detail]
 ```
 
 | Argument | Meaning |
@@ -47,9 +57,21 @@ whichDIDshouldIuse Y G T D
 | `T` | **Calendar** time (year, quarter, …) |
 | `D` | Treatment |
 
-All four are positional and required, in that order. You pass **your own variable
-names** — no pre-renaming needed. The command runs inside `preserve`/`restore`, so
-your data in memory is unchanged when it finishes.
+All four variables are positional and required, in that order. You pass **your own
+variable names** — no pre-renaming needed. The command runs inside
+`preserve`/`restore`, so your data in memory is unchanged when it finishes.
+
+| Option | Effect |
+|---|---|
+| `detail` | Also print the input echo, the panel summary, and the full `DIAGNOSTICS` block. |
+
+By default you get the classification and nothing else — bar the two dropped-group
+lines, which are **never** suppressed. Those report groups discarded from your
+sample, which is a warning rather than a diagnostic: a run that silently loses 400
+groups must not look like one that loses none.
+
+`detail` controls **display only**. Every `r()` return is set either way, so you
+never need it to get at a result — see [Returned values](#returned-values).
 
 It classifies; it does **not** estimate. There are no fixed effects, weights, or
 standard-error options, because nothing is being fitted.
@@ -83,8 +105,6 @@ holds.
 | **HAD** | One common switch date, everyone starts untreated, but the **size** of the change differs (a dose, not an on/off switch) | `did_had` |
 | **SFSD** | Broadest tested. Permits **non-absorbing** treatment (switching back off) and **heterogeneous baseline** doses | `did_multiplegt_dyn` |
 | **OTHER** | None of the above. The output lists, condition by condition, exactly which checks failed for each design. | — |
-
-**SSD is not implemented yet.**
 
 ### What makes SFSD different
 
@@ -190,15 +210,21 @@ place, whatever it is." Only the strict one drives the branches.
 ## Running the tests
 
 ```bash
-"/c/Program Files/StataNow19/StataSE-64.exe" -e do Stata/examples.do
+cd Stata
+"/c/Program Files/StataNow19/StataSE-64.exe" -e do examples.do
 ```
 
-`-e` runs batch and writes `examples.log`. **Stata's exit code is not reliable** —
+`examples.do` loads the panels via `../data/`, so run it from `Stata/`. `-e` runs
+batch and writes `examples.log` next to the do-file. **Stata's exit code is not reliable** —
 a file that fails to run at all still exits 0, so read the log.
 
 `examples.do` runs one block per panel, each labelled with the design it is
-expected to return, so a mismatch is visible when scanning the log. Current
-results:
+expected to return, so a mismatch is visible when scanning the log. Every call
+passes `, detail`: the log is the test suite, and a regression that prints only
+`DESIGN: SAD` where `SFSD` was expected tells you *what* broke but not *why* —
+the diagnostics table is the evidence. The Moser–Voena block additionally runs
+once **without** `detail`, so the log also carries one sample of default output.
+Current results:
 
 | Dataset | Design | Why |
 |---|---|---|
@@ -224,14 +250,30 @@ foreach f in paper1 paper2 paper3 {
 }
 ```
 
-Note `quietly` to suppress the diagnostics. Datasets with different variable names
-need a per-dataset mapping, which is why `examples.do` uses four explicit blocks
-rather than a loop.
+`quietly` here suppresses the classification report *and* the dropped-group
+warnings, so the loop prints one line per dataset. Every `r()` return is set
+regardless — and regardless of `detail`, which only controls what is displayed.
+There is no middle setting that keeps the warnings but hides the report; if you
+want the warnings while looping, drop `quietly` and accept the longer log.
+
+Datasets with different variable names need a per-dataset mapping, which is why
+`examples.do` uses four explicit blocks rather than a loop.
 
 ---
 
 ## Conventions worth knowing before editing
 
+- **`as text` / `as result` for output, never `in red`.** Red is Stata's *error*
+  color; the whole program used it once, which made every successful run look
+  like a failure. Labels and prose are `as text`, computed values are
+  `as result`, and `as error` stays reserved for genuine errors (there are none
+  yet). Within a single `di`, a style directive applies to everything after it —
+  including across a `///` continuation — so a literal that follows a value must
+  re-state `as text`, or it inherits the value's color.
+- **The data-manipulation commands are `quietly`.** `gen`, `egen`, `drop`,
+  `fillin` and friends otherwise announce every step (`(282,672 missing values
+  generated)`), which buried the actual answer once the diagnostics went behind
+  `detail`. Keep new ones quiet.
 - **Named scalars, not `r()`, in the conditionals.** Every `r(mean)`/`r(min)` is
   captured into a named scalar on the line right after the command that produced
   it; the classification block reads only those names. `r()` is overwritten by the
