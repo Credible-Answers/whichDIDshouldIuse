@@ -1,5 +1,5 @@
 /*==============================================================================
-  test.do
+  examples.do
   Exercise the whichDIDshouldIuse package on the four panels in data/.
 
   This is the driver: it holds NO classification logic. The program lives in
@@ -18,6 +18,12 @@
   (Do NOT write a star-dot-dta glob here: Stata NESTS block comments, so the
   slash-star inside such a glob opens a second comment level and silently
   swallows the rest of the file.)
+
+  Calls pass , detail on purpose. This log IS the test suite, and a regression
+  that prints only "DESIGN: SAD" where SFSD was expected tells you WHAT broke
+  but not WHY -- the diagnostics table is the evidence. The Moser-Voena block
+  additionally runs once WITHOUT detail so the log also carries one sample of
+  default output, which is what confirms the gating still works.
 ==============================================================================*/
 
 clear all
@@ -33,16 +39,21 @@ set more off
 
 use "../data/moser_voena_didtextbook.dta", clear
 
+* Default output: the dropped-group warnings and the classification only.
 * whichDIDshouldIuse  Y        G         T      D
 whichDIDshouldIuse    patents  subclass  year   twea
 
-di in red _n "r(design)    = " r(design)
-di in red    "r(estimator) = " r(estimator)
+* The same panel with full diagnostics, as the other three blocks use. The
+* r() echoes below read THIS call.
+whichDIDshouldIuse    patents  subclass  year   twea, detail
 
-di in red _n "SFSD diagnostics:"
-di in red    "  r(sfsd_pair)        = " r(sfsd_pair)
-di in red    "  r(n_baseline_cells) = " r(n_baseline_cells)
-di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
+di as text _n "r(design)    = " as result r(design)
+di as text    "r(estimator) = " as result r(estimator)
+
+di as text _n "SFSD diagnostics:"
+di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
@@ -52,15 +63,15 @@ di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
 use "../data/wolfers2006_didtextbook.dta", clear
 
 * whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse div_rate state year udl
+whichDIDshouldIuse div_rate state year udl, detail
 
-di in red _n "r(design)    = " r(design)
-di in red    "r(estimator) = " r(estimator)
+di as text _n "r(design)    = " as result r(design)
+di as text    "r(estimator) = " as result r(estimator)
 
-di in red _n "SFSD diagnostics:"
-di in red    "  r(sfsd_pair)        = " r(sfsd_pair)
-di in red    "  r(n_baseline_cells) = " r(n_baseline_cells)
-di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
+di as text _n "SFSD diagnostics:"
+di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
@@ -70,15 +81,15 @@ di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
 use "../data/gentzkowetal_didtextbook.dta", clear
 
 * whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse prestout cnty90 year numdailies
+whichDIDshouldIuse prestout cnty90 year numdailies, detail
 
-di in red _n "r(design)    = " r(design)
-di in red    "r(estimator) = " r(estimator)
+di as text _n "r(design)    = " as result r(design)
+di as text    "r(estimator) = " as result r(estimator)
 
-di in red _n "SFSD diagnostics:"
-di in red    "  r(sfsd_pair)        = " r(sfsd_pair)
-di in red    "  r(n_baseline_cells) = " r(n_baseline_cells)
-di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
+di as text _n "SFSD diagnostics:"
+di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
@@ -111,14 +122,14 @@ reshape long lemp, i(indusid) j(year)
 replace ntrgap = 0 if year <= 2000
 
 * whichDIDshouldIuse  Y     G        T     D
-whichDIDshouldIuse    lemp  indusid  year  ntrgap
+whichDIDshouldIuse    lemp  indusid  year  ntrgap, detail
 
-di in red _n "r(design)    = " r(design)
-di in red    "r(estimator) = " r(estimator)
+di as text _n "r(design)    = " as result r(design)
+di as text    "r(estimator) = " as result r(estimator)
 
-di in red _n "SFSD diagnostics:"
-di in red    "  r(sfsd_pair)        = " r(sfsd_pair)
-di in red    "  r(n_baseline_cells) = " r(n_baseline_cells)
-di in red    "  r(n_sfsd_cells)     = " r(n_sfsd_cells)
+di as text _n "SFSD diagnostics:"
+di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 

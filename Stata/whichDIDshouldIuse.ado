@@ -1,4 +1,4 @@
-*! whichDIDshouldIuse 0.1  15sep2026
+*! whichDIDshouldIuse 0.2  23sep2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD.
 
 /*==============================================================================
@@ -6,20 +6,39 @@
 
   Classify a (y, g, t, d) panel as CLA, SAD, HAD, or SFSD.
 
-  Definitions follow docs/did-designs-summary.md (authoritative).
-  Scope: CLA, SAD, HAD, SFSD. No SSD yet.
+  Definitions follow did-designs-summary.md at the repo root (authoritative).
+  Scope: CLA, SAD, HAD, SFSD.
 
   SYNTAX
-    whichDIDshouldIuse Y G T D
+    whichDIDshouldIuse Y G T D [, detail]
       Y  outcome
       G  group identifier
       T  the user's CALENDAR time variable (year, quarter, ...)
       D  treatment
 
-  All four are positional and required. The caller passes their OWN variable
-  names; no pre-renaming is needed. The program runs inside preserve/restore,
-  so the caller's data is unchanged on exit -- which also means the constructed
-  variables (Fg, d_baseline, first_change, ...) do NOT survive the call.
+    detail  also print the input echo, the panel summary and the full
+            DIAGNOSTICS block. Without it only the dropped-group warnings
+            and the classification report are shown.
+
+  All four variables are positional and required. The caller passes their OWN
+  variable names; no pre-renaming is needed. The program runs inside
+  preserve/restore, so the caller's data is unchanged on exit -- which also
+  means the constructed variables (Fg, d_baseline, first_change, ...) do NOT
+  survive the call.
+
+  DISPLAY
+    detail gates the DIAGNOSTICS block, the input echo and the panel summary.
+    It deliberately does NOT gate the two "Groups dropped ..." lines: those
+    report groups discarded from the caller's sample, which is a warning
+    rather than a diagnostic and must stay visible. detail controls display
+    ONLY -- every r() return is set either way, so it is never needed to get
+    at a result.
+
+    Normal output is "as text"; computed values are "as result". "as error"
+    (and its old spelling, "in red") is reserved for genuine errors, of which
+    this program currently has none. Note that within a single di, a style
+    directive applies to everything after it -- including across a ///
+    continuation -- so a literal following a value must re-state "as text".
 
   DEPENDENCY
     distinct (SSC):  ssc install distinct
@@ -49,7 +68,7 @@
 
 program define whichDIDshouldIuse, rclass
     version 14
-    syntax varlist(min=4 max=4 numeric)
+    syntax varlist(min=4 max=4 numeric) [, DETail]
 
     * Turn OFF variable-name abbreviation for the whole program. Stata would
     * otherwise resolve a short name to any variable it uniquely prefixes --
@@ -65,9 +84,17 @@ program define whichDIDshouldIuse, rclass
     local Tvar "`3'"
     local Dvar "`4'"
 
-    di in red _n "{hline 70}"
-    di in red    "  whichDIDshouldIuse:  Y=`Yvar'  G=`Gvar'  T=`Tvar'  D=`Dvar'"
-    di in red    "{hline 70}"
+    * Gated: see the DISPLAY note in the header. Quote BOTH sides of the
+    * comparison -- if (`detail' != "") expands to if ( != "") when the option
+    * is absent, a syntax error on the default (common) path.
+    if ("`detail'" != "") {
+        di as text _n "{hline 70}"
+        di as text    "  whichDIDshouldIuse:  Y=" as result "`Yvar'" ///
+                      as text "  G=" as result "`Gvar'" ///
+                      as text "  T=" as result "`Tvar'" ///
+                      as text "  D=" as result "`Dvar'"
+        di as text    "{hline 70}"
+    }
 
     * Work on a copy: the caller's data is restored on exit.
     preserve
@@ -76,17 +103,17 @@ program define whichDIDshouldIuse, rclass
     * names (Tmax, n_groups, same_Fg, ...), and Stata resolves a bare name to a
     * VARIABLE before a scalar. Dropping every other variable first guarantees
     * no variable in the caller's data can shadow one of those scalars.
-    keep `Yvar' `Gvar' `Tvar' `Dvar'
+    qui keep `Yvar' `Gvar' `Tvar' `Dvar'
 
     * Rename one at a time: the grouped "rename (a b) (c d)" form needs Stata
     * 14+, and under an older version statement it parses as the old
     * single-variable syntax and fails. Renaming individually always works.
-    rename `Yvar' y
-    rename `Gvar' g
-    rename `Tvar' t_cal
-    rename `Dvar' d
+    qui rename `Yvar' y
+    qui rename `Gvar' g
+    qui rename `Tvar' t_cal
+    qui rename `Dvar' d
 
-    drop if missing(g) | missing(t_cal)
+    qui drop if missing(g) | missing(t_cal)
 
     * ---------------------------------------------------------------------- *
     * 1. Time variables: normalize, and build the calendar crosswalk
@@ -95,13 +122,13 @@ program define whichDIDshouldIuse, rclass
     * Balance the panel over g x t_cal BEFORE normalizing, so that every group
     * has a row for every calendar period actually present in the data.
     cap drop _fillin
-    fillin g t_cal
+    qui fillin g t_cal
 
     * NOTE: do NOT write "cap drop t" here. Stata abbreviates variable names,
     * and since t_cal is the only variable beginning with "t", both "drop t"
     * and "confirm variable t" resolve to t_cal and silently delete it.
     * set varabbrev off makes every name match exactly.
-    egen t = group(t_cal)               // consecutive integers 1..Tmax
+    qui egen t = group(t_cal)               // consecutive integers 1..Tmax
 
     qui sum t
     scalar Tmax   = r(max)
@@ -125,8 +152,13 @@ program define whichDIDshouldIuse, rclass
     order g t t_cal d y
     sort g t
 
-    di in red _n "Panel: " %4.0f Tmax " periods, calendar " %4.0f cal_min " .. " %4.0f cal_max
-    di in red    "       (t normalized to 1.." %4.0f Tmax "; never-switcher sentinel = " %4.0f Tplus1 ")"
+    if ("`detail'" != "") {
+        di as text _n "Panel: " as result %4.0f Tmax ///
+           as text " periods, calendar " as result %4.0f cal_min ///
+           as text " .. " as result %4.0f cal_max
+        di as text    "       (t normalized to 1.." as result %4.0f Tmax ///
+           as text "; never-switcher sentinel = " as result %4.0f Tplus1 as text ")"
+    }
 
     * ---------------------------------------------------------------------- *
     * 2. Baseline treatment, and dropping groups without a verifiable baseline
@@ -139,33 +171,37 @@ program define whichDIDshouldIuse, rclass
     * first non-missing value). egen min() just spreads that single value to
     * every row of the group; it is NOT a minimum over the path.
     cap drop d_baseline_temp d_baseline
-    gen    d_baseline_temp = d if t == 1
-    bys g: egen d_baseline = min(d_baseline_temp)
+    qui gen    d_baseline_temp = d if t == 1
+    qui bys g: egen d_baseline = min(d_baseline_temp)
 
     * No treatment observed in period 1 -> no verifiable baseline -> unusable.
-    drop if missing(d_baseline)
+    qui drop if missing(d_baseline)
 
     qui distinct g
     scalar n_groups_baseline  = r(ndistinct)
     scalar n_dropped_baseline = n_groups_raw - n_groups_baseline
 
-    di in red "Groups dropped for missing baseline (d at t=1, cal " %4.0f cal_min "): " ///
-              n_dropped_baseline "  (" n_groups_raw " -> " n_groups_baseline ")"
+    * NOT gated by detail: this reports groups discarded from the caller's
+    * sample. A warning, not a diagnostic -- it must survive default output.
+    di as text "Groups dropped for missing baseline (d at t=1, cal " ///
+       as result %4.0f cal_min as text "): " as result n_dropped_baseline ///
+       as text "  (" as result n_groups_raw as text " -> " ///
+       as result n_groups_baseline as text ")"
 
     * ---------------------------------------------------------------------- *
     * 3. Date of first switch (Fg), treatment at the switch, size of change
     * ---------------------------------------------------------------------- *
 
     cap drop t_d_diff_d_baseline Fg
-    gen    t_d_diff_d_baseline = t*(d!=. & d!=d_baseline) + Tplus1*(d==. | d==d_baseline)
-    bys g: egen Fg = min(t_d_diff_d_baseline)
+    qui gen    t_d_diff_d_baseline = t*(d!=. & d!=d_baseline) + Tplus1*(d==. | d==d_baseline)
+    qui bys g: egen Fg = min(t_d_diff_d_baseline)
 
     cap drop d_Fg_temp d_Fg
-    gen    d_Fg_temp = d if t == Fg
-    bys g: egen d_Fg = min(d_Fg_temp)
+    qui gen    d_Fg_temp = d if t == Fg
+    qui bys g: egen d_Fg = min(d_Fg_temp)
 
     cap drop first_change
-    gen first_change = d_Fg - d_baseline
+    qui gen first_change = d_Fg - d_baseline
 
     * ---------------------------------------------------------------------- *
     * 4. Pre-treatment integrity filter
@@ -189,16 +225,19 @@ program define whichDIDshouldIuse, rclass
     * from the start of the panel up to the one before the switch" -- Fg-1 is
     * always a real period, which would NOT hold with gappy calendar dates.
     cap drop d_pretreatment_flag_temp d_pretreatment_flag
-    gen    d_pretreatment_flag_temp = (d==. | d!=d_baseline) if inrange(t, 1, Fg-1)
-    bys g: egen d_pretreatment_flag = max(d_pretreatment_flag_temp)
-    drop if d_pretreatment_flag == 1
+    qui gen    d_pretreatment_flag_temp = (d==. | d!=d_baseline) if inrange(t, 1, Fg-1)
+    qui bys g: egen d_pretreatment_flag = max(d_pretreatment_flag_temp)
+    qui drop if d_pretreatment_flag == 1
 
     qui distinct g
     scalar n_groups           = r(ndistinct)
     scalar n_dropped_pretreat = n_groups_baseline - n_groups
 
-    di in red "Groups dropped for pre-treatment violations: " n_dropped_pretreat ///
-              "  (" n_groups_baseline " -> " n_groups ")"
+    * NOT gated by detail, for the same reason as the baseline warning above.
+    di as text "Groups dropped for pre-treatment violations: " ///
+       as result n_dropped_pretreat ///
+       as text "  (" as result n_groups_baseline as text " -> " ///
+       as result n_groups as text ")"
 
     * ---------------------------------------------------------------------- *
     * 5. Scalar flags
@@ -208,7 +247,7 @@ program define whichDIDshouldIuse, rclass
     * ---------------------------------------------------------------------- *
 
     cap drop first_g
-    bys g: gen byte first_g = (_n == 1)
+    qui bys g: gen byte first_g = (_n == 1)
 
     * ---- Never-treated groups ------------------------------------------- *
     qui count if first_g & Fg == Tplus1
@@ -224,7 +263,7 @@ program define whichDIDshouldIuse, rclass
     * sd() is missing with a single observation; a lone switcher trivially has
     * no timing variation, so missing -> same_Fg = 1 (deliberate).
     cap drop sd_Fg_sw
-    egen sd_Fg_sw = sd(Fg) if first_g & Fg < Tplus1
+    qui egen sd_Fg_sw = sd(Fg) if first_g & Fg < Tplus1
     qui sum sd_Fg_sw
     scalar sd_Fg_value = r(mean)
     scalar same_Fg     = cond(missing(sd_Fg_value), 1, sd_Fg_value == 0)
@@ -248,7 +287,7 @@ program define whichDIDshouldIuse, rclass
     scalar d_max = r(max)
 
     cap drop binary_check
-    gen binary_check = (d == d_min | d == d_max) if !missing(d)
+    qui gen binary_check = (d == d_min | d == d_max) if !missing(d)
     qui sum binary_check
     scalar is_binary = (r(mean) == 1)
 
@@ -260,7 +299,7 @@ program define whichDIDshouldIuse, rclass
     * ---- Is the treatment absorbing? ------------------------------------- *
     * d must equal d_Fg from the switch date onward, for switchers.
     cap drop absorbing_check
-    gen absorbing_check = (d == d_Fg) if Fg < Tplus1 & t >= Fg & !missing(d) & !missing(d_Fg)
+    qui gen absorbing_check = (d == d_Fg) if Fg < Tplus1 & t >= Fg & !missing(d) & !missing(d_Fg)
     qui sum absorbing_check
     scalar n_absorbing_obs = r(N)
     * No post-switch observations -> NOT absorbing. (Deliberately the opposite
@@ -276,7 +315,7 @@ program define whichDIDshouldIuse, rclass
 
     * Common (but not necessarily zero) baseline -- displayed for contrast.
     cap drop sd_d_baseline
-    egen sd_d_baseline = sd(d_baseline) if first_g
+    qui egen sd_d_baseline = sd(d_baseline) if first_g
     qui sum sd_d_baseline
     scalar sd_baseline_value = r(mean)
     scalar common_baseline   = cond(missing(sd_baseline_value), 1, sd_baseline_value == 0)
@@ -286,7 +325,7 @@ program define whichDIDshouldIuse, rclass
     * treatment change varies across switchers. Used directly, rather than via
     * a "not binary at the switch date" proxy.
     cap drop sd_first_change
-    egen sd_first_change = sd(first_change) if first_g & Fg < Tplus1
+    qui egen sd_first_change = sd(first_change) if first_g & Fg < Tplus1
     qui sum sd_first_change
     scalar sd_change_value = r(mean)
     scalar heterog_dose    = cond(missing(sd_change_value), 0, sd_change_value > 0)
@@ -312,7 +351,7 @@ program define whichDIDshouldIuse, rclass
     * sd() is missing in a singleton cell; that is the correct reading (one
     * group can supply no pair), and max() below ignores it.
     cap drop sd_Fg_within
-    bys d_baseline: egen sd_Fg_within = sd(Fg) if first_g
+    qui bys d_baseline: egen sd_Fg_within = sd(Fg) if first_g
     qui sum sd_Fg_within
     scalar max_sd_Fg_within = r(max)
     scalar sfsd_pair        = cond(missing(max_sd_Fg_within), 0, max_sd_Fg_within > 0)
@@ -330,27 +369,37 @@ program define whichDIDshouldIuse, rclass
     * 6. Diagnostics -- the full state driving the classification
     * ---------------------------------------------------------------------- *
 
-    di in red _n "{hline 70}"
-    di in red    "  DIAGNOSTICS"
-    di in red    "{hline 70}"
-    di in red    "  n_groups             = " n_groups
-    di in red    "  n_switchers          = " n_switchers
-    di in red    "  n_never_treated      = " n_never_treated
-    di in red    "  never_treated_groups = " never_treated_groups
-    di in red    "  any_switchers        = " any_switchers
-    di in red    "  same_Fg              = " same_Fg      "   (sd(Fg|switchers) = " sd_Fg_value ")"
-    di in red    "  switch periods (t)   = " %2.0f first_switch_t " .. " %2.0f last_switch_t
-    di in red    "  switch dates (t_cal) = " %4.0f first_switch_cal " .. " %4.0f last_switch_cal
-    di in red    "  is_binary            = " is_binary    "   (d in {" d_min ", " d_max "})"
-    di in red    "  is_binary01          = " is_binary01
-    di in red    "  is_absorbing         = " is_absorbing
-    di in red    "  zero_baseline        = " zero_baseline "   (groups with d_baseline!=0: " n_nonzero_baseline ")"
-    di in red    "  common_baseline      = " common_baseline
-    di in red    "  heterog_dose         = " heterog_dose "   (sd(first_change) = " sd_change_value ")"
-    di in red    "  sfsd_pair            = " sfsd_pair    "   (max sd(Fg) within a baseline cell = " max_sd_Fg_within ")"
-    di in red    "  n_baseline_cells     = " n_baseline_cells
-    di in red    "  n_sfsd_cells         = " n_sfsd_cells "   (cells carrying timing variation)"
-    di in red    "{hline 70}"
+    if ("`detail'" != "") {
+        di as text _n "{hline 70}"
+        di as text    "  DIAGNOSTICS"
+        di as text    "{hline 70}"
+        di as text    "  n_groups             = " as result n_groups
+        di as text    "  n_switchers          = " as result n_switchers
+        di as text    "  n_never_treated      = " as result n_never_treated
+        di as text    "  never_treated_groups = " as result never_treated_groups
+        di as text    "  any_switchers        = " as result any_switchers
+        di as text    "  same_Fg              = " as result same_Fg ///
+           as text    "   (sd(Fg|switchers) = " as result sd_Fg_value as text ")"
+        di as text    "  switch periods (t)   = " as result %2.0f first_switch_t ///
+           as text    " .. " as result %2.0f last_switch_t
+        di as text    "  switch dates (t_cal) = " as result %4.0f first_switch_cal ///
+           as text    " .. " as result %4.0f last_switch_cal
+        di as text    "  is_binary            = " as result is_binary ///
+           as text    "   (d in {" as result d_min as text ", " as result d_max as text "})"
+        di as text    "  is_binary01          = " as result is_binary01
+        di as text    "  is_absorbing         = " as result is_absorbing
+        di as text    "  zero_baseline        = " as result zero_baseline ///
+           as text    "   (groups with d_baseline!=0: " as result n_nonzero_baseline as text ")"
+        di as text    "  common_baseline      = " as result common_baseline
+        di as text    "  heterog_dose         = " as result heterog_dose ///
+           as text    "   (sd(first_change) = " as result sd_change_value as text ")"
+        di as text    "  sfsd_pair            = " as result sfsd_pair ///
+           as text    "   (max sd(Fg) within a baseline cell = " as result max_sd_Fg_within as text ")"
+        di as text    "  n_baseline_cells     = " as result n_baseline_cells
+        di as text    "  n_sfsd_cells         = " as result n_sfsd_cells ///
+           as text    "   (cells carrying timing variation)"
+        di as text    "{hline 70}"
+    }
 
     * ---------------------------------------------------------------------- *
     * 7. Classification
@@ -385,97 +434,94 @@ program define whichDIDshouldIuse, rclass
     * 8. Report
     * ---------------------------------------------------------------------- *
 
-    di in red _n "{hline 70}"
+    di as text _n "{hline 70}"
 
     if ("`design'" == "CLA") {
         di as result "  DESIGN: Classical DID Design (CLA)"
-        di in red    "{hline 70}"
-        di in red    "  Binary and absorbing treatment, no variation in treatment"
-        di in red    "  timing: all " n_switchers " treated group(s) experience treatment at"
-        di in red    "  t=" %4.0f common_switch_cal " (period " %2.0f common_switch_t "), and " n_never_treated " group(s) never switch."
-        di in red    "  Estimator: `estimator'"
-        di in red    "  See Chapter 3 of the DID textbook (de Chaisemartin and"
-        di in red    "  D'Haultfoeuille)."
+        di as text    "{hline 70}"
+        di as text    "  Binary and absorbing treatment, no variation in treatment"
+        di as text    "  timing: all " n_switchers " treated group(s) experience treatment at"
+        di as text    "  t=" %4.0f common_switch_cal " (period " %2.0f common_switch_t "), and " n_never_treated " group(s) never switch."
+        di as text    "  Estimator: `estimator'"
+        di as text    "  See Chapter 3 of the DID textbook (de Chaisemartin and"
+        di as text    "  D'Haultfoeuille)."
     }
     else if ("`design'" == "SAD") {
         di as result "  DESIGN: Staggered Adoption Design (SAD)"
-        di in red    "{hline 70}"
-        di in red    "  Binary and absorbing treatment, with variation in treatment"
-        di in red    "  timing across the " n_switchers " switching group(s): first switches"
-        di in red    "  occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
-        di in red    "  Estimator: `estimator'"
-        di in red    "  See Chapter 6 of the DID textbook."
+        di as text    "{hline 70}"
+        di as text    "  Binary and absorbing treatment, with variation in treatment"
+        di as text    "  timing across the " n_switchers " switching group(s): first switches"
+        di as text    "  occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    "  Estimator: `estimator'"
+        di as text    "  See Chapter 6 of the DID textbook."
     }
     else if ("`design'" == "HAD") {
         di as result "  DESIGN: Heterogeneous Adoption Design (HAD)"
-        di in red    "{hline 70}"
-        di in red    "  All groups untreated at baseline (t=" %4.0f cal_min "); all " n_switchers " treated"
-        di in red    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the size"
-        di in red    "  of that change varies across groups."
-        di in red    "  Estimator: `estimator'"
-        di in red    "  See Chapter 7 of the DID textbook."
+        di as text    "{hline 70}"
+        di as text    "  All groups untreated at baseline (t=" %4.0f cal_min "); all " n_switchers " treated"
+        di as text    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the size"
+        di as text    "  of that change varies across groups."
+        di as text    "  Estimator: `estimator'"
+        di as text    "  See Chapter 7 of the DID textbook."
     }
     else if ("`design'" == "SFSD") {
         di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
-        di in red    "{hline 70}"
-        di in red    "  The panel is not CLA, SAD or HAD, but it does satisfy the"
-        di in red    "  staggered first-switch condition: some groups share the same"
-        di in red    "  baseline treatment while first switching at different dates."
-        di in red    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
-        di in red    ""
-        di in red    "  SFSD is the broadest design tested here. Unlike CLA/SAD it"
-        di in red    "  permits NON-ABSORBING treatment (a group may switch more than"
-        di in red    "  once, including back to its baseline), and unlike HAD it permits"
-        di in red    "  HETEROGENEOUS baseline doses."
-        di in red    ""
-        di in red    "  Identifying variation: " n_sfsd_cells " of " n_baseline_cells " baseline cell(s) contain"
-        di in red    "  groups that first switch at different dates."
-        di in red    "  Estimator: `estimator'"
-        di in red    "  See Chapter 8 of the DID textbook."
+        di as text    "{hline 70}"
+        di as text    "  The panel is not CLA, SAD or HAD, but it does satisfy the"
+        di as text    "  staggered first-switch condition: some groups share the same"
+        di as text    "  baseline treatment while first switching at different dates."
+        di as text    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    ""
+        di as text    "  SFSD is the broadest design tested here. Unlike CLA/SAD it"
+        di as text    "  permits NON-ABSORBING treatment (a group may switch more than"
+        di as text    "  once, including back to its baseline), and unlike HAD it permits"
+        di as text    "  HETEROGENEOUS baseline doses."
+        di as text    ""
+        di as text    "  Identifying variation: " n_sfsd_cells " of " n_baseline_cells " baseline cell(s) contain"
+        di as text    "  groups that first switch at different dates."
+        di as text    "  Estimator: `estimator'"
+        di as text    "  See Chapter 8 of the DID textbook."
     }
     else {
         di as result "  DESIGN: OTHER"
-        di in red    "{hline 70}"
-        di in red    "  Your design isn't CLA, SAD, HAD, or SFSD."
-        di in red    ""
-        di in red    "  Why each was ruled out:"
+        di as text    "{hline 70}"
+        di as text    "  Your design isn't CLA, SAD, HAD, or SFSD."
+        di as text    ""
+        di as text    "  Why each was ruled out:"
 
         * ---- CLA ----
-        di in red    "   CLA requires: switchers, binary {0,1}, absorbing, no timing"
-        di in red    "                 variation, never-treated groups, zero baseline."
-        if (!any_switchers)         di in red "     - failed: no switchers"
-        if (!is_binary01)           di in red "     - failed: treatment not binary {0,1}"
-        if (!is_absorbing)          di in red "     - failed: treatment not absorbing"
-        if (!same_Fg)               di in red "     - failed: treatment timing varies"
-        if (!never_treated_groups)  di in red "     - failed: no never-treated groups"
-        if (!zero_baseline)         di in red "     - failed: baseline treatment not 0 for all groups"
+        di as text    "   CLA requires: switchers, binary {0,1}, absorbing, no timing"
+        di as text    "                 variation, never-treated groups, zero baseline."
+        if (!any_switchers)         di as text "     - failed: no switchers"
+        if (!is_binary01)           di as text "     - failed: treatment not binary {0,1}"
+        if (!is_absorbing)          di as text "     - failed: treatment not absorbing"
+        if (!same_Fg)               di as text "     - failed: treatment timing varies"
+        if (!never_treated_groups)  di as text "     - failed: no never-treated groups"
+        if (!zero_baseline)         di as text "     - failed: baseline treatment not 0 for all groups"
 
         * ---- SAD ----
-        di in red    "   SAD requires: switchers, binary {0,1}, absorbing, timing variation."
-        if (!any_switchers)         di in red "     - failed: no switchers"
-        if (!is_binary01)           di in red "     - failed: treatment not binary {0,1}"
-        if (!is_absorbing)          di in red "     - failed: treatment not absorbing"
-        if (same_Fg)                di in red "     - failed: no variation in treatment timing"
+        di as text    "   SAD requires: switchers, binary {0,1}, absorbing, timing variation."
+        if (!any_switchers)         di as text "     - failed: no switchers"
+        if (!is_binary01)           di as text "     - failed: treatment not binary {0,1}"
+        if (!is_absorbing)          di as text "     - failed: treatment not absorbing"
+        if (same_Fg)                di as text "     - failed: no variation in treatment timing"
 
         * ---- HAD ----
-        di in red    "   HAD requires: switchers, common switch date, zero baseline,"
-        di in red    "                 heterogeneous dose at the switch."
-        if (!any_switchers)         di in red "     - failed: no switchers"
-        if (!same_Fg)               di in red "     - failed: switch dates differ across groups"
-        if (!zero_baseline)         di in red "     - failed: baseline treatment not 0 for all groups"
-        if (!heterog_dose)          di in red "     - failed: size of first change does not vary"
+        di as text    "   HAD requires: switchers, common switch date, zero baseline,"
+        di as text    "                 heterogeneous dose at the switch."
+        if (!any_switchers)         di as text "     - failed: no switchers"
+        if (!same_Fg)               di as text "     - failed: switch dates differ across groups"
+        if (!zero_baseline)         di as text "     - failed: baseline treatment not 0 for all groups"
+        if (!heterog_dose)          di as text "     - failed: size of first change does not vary"
 
         * ---- SFSD ----
-        di in red    "   SFSD requires: switchers, and two groups sharing a baseline"
-        di in red    "                  treatment value that first switch at different dates."
-        if (!any_switchers)         di in red "     - failed: no switchers"
-        if (!sfsd_pair)             di in red "     - failed: no two groups share a baseline treatment value while first switching at different dates"
-
-        di in red    ""
-        di in red    "  SSD is not tested by this version."
+        di as text    "   SFSD requires: switchers, and two groups sharing a baseline"
+        di as text    "                  treatment value that first switch at different dates."
+        if (!any_switchers)         di as text "     - failed: no switchers"
+        if (!sfsd_pair)             di as text "     - failed: no two groups share a baseline treatment value while first switching at different dates"
     }
 
-    di in red "{hline 70}"
+    di as text "{hline 70}"
 
     * ---------------------------------------------------------------------- *
     * 9. Return
