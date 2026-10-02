@@ -11,7 +11,8 @@
     Moser-Voena      CLA    (336 subclasses all switch in 1919)
     Wolfers          SAD    (states adopt unilateral divorce at varying dates)
     Gentzkow et al.  SFSD   (#newspapers is a non-absorbing count)
-    Pierce-Schott    HAD    (common 2001 switch, continuous NTR-gap dose)
+    Pierce-Schott    HAD    (common 2001 switch, continuous NTR-gap dose;
+                            sub-case quasi-stayers: did_had QS = 6.15, p = 0.14)
 
   Every dataset uses different variable names, which is why this is four
   explicit blocks rather than a loop over the .dta files in data/.
@@ -93,7 +94,7 @@ di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
-  Pierce and Schott - HAD
+  Pierce and Schott - HAD (quasi-stayers)
 
   This file ships WIDE: one row per industry, with time in the variable NAMES
   (lemp1997..lemp2000, delta2001..delta2005). It must be reshaped to a long
@@ -132,4 +133,7 @@ di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
 di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
 di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
-
+di as text _n "HAD sub-case (did_had's quasi-stayer test):"
+di as text    "  r(had_case)  = " as result r(had_case)
+di as text    "  r(qs_stat)   = " as result r(qs_stat)
+di as text    "  r(qs_pval)   = " as result r(qs_pval)
