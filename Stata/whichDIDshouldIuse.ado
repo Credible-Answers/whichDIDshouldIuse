@@ -1,4 +1,4 @@
-*! whichDIDshouldIuse 0.2  24sep2026
+*! whichDIDshouldIuse 0.3  02oct2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with a less strict
 *! default for missing treatment and a strict option.
 
@@ -67,8 +67,25 @@
     across a /// continuation -- so a literal following a value must re-state
     "as text".
 
+  HAD SUB-CASES
+    When the design is HAD, r(had_case) says which control group exists at
+    the common switch date F (Chapter 7; de Chaisemartin et al. 2026):
+      stayers        some groups keep D = 0 at F (never-switchers)
+      quasi-stayers  no stayers, and did_had's quasi-untreated (QS) test
+                     does not reject at 5%
+      none           no stayers, and the QS test rejects -- or the two
+                     lowest doses tie (a mass point), where the test
+                     statistic is undefined
+      undetermined   no stayers, and did_had could not be run
+    The QS test is did_had's own, read from e(estimates). did_had runs in a
+    separate frame (Stata 16+), because it calls preserve and this program
+    already holds one; the caller's e() is held and restored around it.
+
   DEPENDENCY
     distinct (SSC):  ssc install distinct
+    HAD panels without stayers also use did_had (SSC), which needs lprobust
+    (nprobust) and gtools. If any is missing the sub-case is "undetermined";
+    the classification itself never depends on them.
 
   Coding practice: every classification conditional tests a NAMED SCALAR
   defined where the underlying statistic is computed; each r() value is
@@ -330,9 +347,10 @@ program define whichDIDshouldIuse, rclass
     qui count if first_g & post_gap == 1
     scalar n_post_gap_switchers = r(N)
 
-    * NOT gated by detail: in default mode these groups are in the sample
-    * only because of the less strict rules.
-    if ("`strict'" == "") {
+    * Diagnostic breakdown of the default-rule adjustments -- gated behind
+    * detail like the rest of section 6. Unlike the "Groups dropped" warnings,
+    * nothing here is discarded from the sample, so it is not a safety warning.
+    if ("`strict'" == "") & ("`detail'" != "") {
         di as text "Missing treatment (default rules; use , strict to drop instead):"
         di as text "  late entrants, baseline taken at entry:        " as result n_late_entry
         di as text "  d missing at start, baseline taken later:      " as result n_missing_at_start
@@ -426,6 +444,24 @@ program define whichDIDshouldIuse, rclass
     scalar sd_change_value = r(mean)
     scalar heterog_dose    = cond(missing(sd_change_value), 0, sd_change_value > 0)
 
+    * ---- HAD: sign of the dose, stayers, lowest dose ---------------------- *
+    * Read from d at t == Fg (one row per switcher), not d_Fg, so a tie test
+    * is not blurred by d_Fg's float storage.
+    qui sum d if t == Fg & Fg < Tplus1
+    scalar min_dose_Fg = r(min)
+    scalar nonneg_dose = cond(r(N) == 0, 0, r(min) >= 0)
+
+    * Stayers: groups still at D = 0 at the switch date. Under same_Fg and
+    * zero_baseline these are exactly the usable never-switchers.
+    scalar n_stayers = n_never_treated
+
+    * Lowest positive dose at the switch, and whether two switchers share it.
+    * A tie makes did_had's QS statistic D(1)/(D(2)-D(1)) undefined.
+    qui sum d if t == Fg & Fg < Tplus1 & d > 0
+    scalar had_d_min = cond(r(N) > 0, r(min), .)
+    qui count if t == Fg & Fg < Tplus1 & d == had_d_min
+    scalar had_tie   = (r(N) >= 2)
+
     * ---- SFSD: a same-baseline pair with different first-switch dates ------ *
     *
     * There must exist g != g' with D_{g,1} == D_{g',1} and F_g != F_{g'}:
@@ -489,6 +525,12 @@ program define whichDIDshouldIuse, rclass
         di as text    "  common_baseline      = " as result common_baseline
         di as text    "  heterog_dose         = " as result heterog_dose ///
            as text    "   (sd(first_change) = " as result sd_change_value as text ")"
+        di as text    "  nonneg_dose          = " as result nonneg_dose ///
+           as text    "   (min dose at the switch = " as result min_dose_Fg as text ")"
+        di as text    "  n_stayers            = " as result n_stayers
+        di as text    "  had_d_min            = " as result had_d_min ///
+           as text    "   (lowest positive dose at the switch)"
+        di as text    "  had_tie              = " as result had_tie
         di as text    "  sfsd_pair            = " as result sfsd_pair ///
            as text    "   (groups in cells with a usable pair: " as result n_sfsd_groups as text ")"
         di as text    "  n_baseline_cells     = " as result n_baseline_cells
@@ -516,13 +558,94 @@ program define whichDIDshouldIuse, rclass
         local design    "SAD"
         local estimator "csdid, did_multiplegt_dyn, or did2s"
     }
-    else if (any_switchers & same_Fg & zero_baseline & heterog_dose) {
+    else if (any_switchers & same_Fg & zero_baseline & heterog_dose & nonneg_dose) {
         local design    "HAD"
         local estimator "did_had"
     }
     else if (any_switchers & sfsd_pair) {
         local design    "SFSD"
         local estimator "did_multiplegt_dyn"
+    }
+
+    * ---------------------------------------------------------------------- *
+    * 7b. HAD sub-case: stayers, quasi-stayers, or neither
+    *
+    *    Stayers are observed directly. Without them, the quasi-stayer
+    *    question is answered by did_had's own QS test (effect 1, i.e. the
+    *    dose at F), read back from e(estimates): col 8 = T, col 9 = p-value.
+    *    did_had calls preserve, which cannot nest inside ours, so it runs in
+    *    a separate frame -- hence the Stata 16 requirement.
+    * ---------------------------------------------------------------------- *
+
+    local had_case ""
+    local had_why  ""
+    scalar qs_stat   = .
+    scalar qs_pval   = .
+    scalar qs_n      = .
+    scalar qs_reject = .
+
+    if ("`design'" == "HAD") {
+        if (n_stayers > 0) {
+            local had_case  "stayers"
+            local estimator "ivregress 2sls or did_multiplegt_stat"
+        }
+        else if (had_tie) {
+            * D(2) - D(1) = 0: did_had would return T = p = missing. A mass
+            * point at the lowest dose is not a quasi-stayer.
+            local had_case  "none"
+            local estimator "did_had"
+            scalar qs_reject = 1
+        }
+        else {
+            local had_missing ""
+            foreach cmd in did_had lprobust gtools {
+                capture which `cmd'
+                if (_rc) local had_missing "`had_missing' `cmd'"
+            }
+
+            if (c(stata_version) < 16) {
+                local had_why "running did_had here needs Stata 16 or later (frames)"
+            }
+            else if ("`had_missing'" != "") {
+                local had_why "not installed:`had_missing'"
+            }
+            else {
+                * Switchers only, observed d only: did_had reads a missing d
+                * as a treatment change. Switchers have d at F-1 and F.
+                tempname had_fr had_hold had_est
+                version 16: frame put y g t d if Fg < Tplus1 & !missing(d), into(`had_fr')
+
+                * did_had is eclass: hold the caller's e(), and clear it so
+                * a stale e(estimates) cannot pass for a result. did_had
+                * exits with rc 0 on some failures, hence the confirm below.
+                _estimates hold `had_hold', restore nullok
+                ereturn clear
+                version 16: capture frame `had_fr': did_had y g t d, effects(1) graph_off _no_updates
+                local had_rc = _rc
+                capture confirm matrix e(estimates)
+                if (`had_rc' == 0 & _rc == 0) {
+                    matrix `had_est' = e(estimates)
+                    scalar qs_n    = `had_est'[1, 5]
+                    scalar qs_stat = `had_est'[1, 8]
+                    scalar qs_pval = `had_est'[1, 9]
+                }
+                _estimates unhold `had_hold'
+                version 16: frame drop `had_fr'
+
+                if (missing(qs_pval)) {
+                    local had_why "did_had did not return a QS test (rc = `had_rc')"
+                }
+            }
+
+            local estimator "did_had"
+            if (missing(qs_pval)) {
+                local had_case "undetermined"
+            }
+            else {
+                scalar qs_reject = (qs_pval < 0.05)
+                local had_case = cond(qs_reject, "none", "quasi-stayers")
+            }
+        }
     }
 
     * ---------------------------------------------------------------------- *
@@ -556,8 +679,55 @@ program define whichDIDshouldIuse, rclass
         di as text    "  All groups untreated at baseline (t=" %4.0f cal_min "); all " n_switchers " treated"
         di as text    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the size"
         di as text    "  of that change varies across groups."
-        di as text    "  Estimator: `estimator'"
-        di as text    "  See Chapter 7 of the DID textbook."
+        di as text    ""
+
+        if ("`had_case'" == "stayers") {
+            di as text "  Sub-case: " as result "stayers" as text " -- " as result n_stayers ///
+               as text " group(s) remain untreated at the switch."
+            di as text "  ATT and WATT are identified under no-anticipation and parallel"
+            di as text "  trends, and estimable at the usual sqrt(G) rate."
+            di as text "  Estimator: WATT by ivregress 2sls dY (d = 1(d>0));"
+            di as text "             ATT and WATT by did_multiplegt_stat."
+        }
+        else if ("`had_case'" == "quasi-stayers") {
+            di as text "  Sub-case: " as result "quasi-stayers" as text " -- no group remains untreated,"
+            di as text "  but did_had's test does not reject that some doses are close to 0:"
+            di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
+               as text "  (N = " as result qs_n as text ", reject at 5% if QS > 19)"
+            di as text "  WATT is identified, using the quasi-stayers as controls; it is"
+            di as text "  estimated at a slower rate, with bias-corrected CIs."
+            di as text "  Estimator: `estimator'"
+        }
+        else if ("`had_case'" == "none") {
+            di as text "  Sub-case: " as result "no stayers or quasi-stayers" as text " -- the lowest dose"
+            di as text "  is not close to 0."
+            if (had_tie) {
+                di as text "    Two or more groups share the lowest dose (" as result had_d_min ///
+                   as text "): a mass point,"
+                di as text "    not a quasi-stayer. did_had's QS statistic is undefined here."
+                di as text "    The estimand reduces to 2SLS with 1(d > " as result had_d_min as text ") as instrument."
+            }
+            else {
+                di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
+                   as text "  (N = " as result qs_n as text ", reject at 5% if QS > 19)"
+            }
+            di as text "  WARNING: without stayers or quasi-stayers, WATT is not identified"
+            di as text "  under parallel trends alone. Using the least-treated as controls"
+            di as text "  needs a bounded-heterogeneity assumption (BOUND-HET), which"
+            di as text "  pretrends cannot test, and then identifies only the SIGN of WATT."
+            di as text "  Estimator: `estimator'"
+        }
+        else {
+            di as text "  Sub-case: " as result "undetermined" as text " -- no group remains untreated,"
+            di as text "  and the quasi-stayer test could not be run:"
+            di as text "    `had_why'"
+            if ("`had_missing'" != "") {
+                di as text "  Install with:  ssc install did_had   ssc install gtools"
+                di as text "                 net install nprobust, from(https://raw.githubusercontent.com/nppackages/nprobust/master/stata)"
+            }
+            di as text "  Estimator: `estimator' (it runs the quasi-stayer test itself)"
+        }
+        di as text    "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
     }
     else if ("`design'" == "SFSD") {
         di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
@@ -603,11 +773,12 @@ program define whichDIDshouldIuse, rclass
 
         * ---- HAD ----
         di as text    "   HAD requires: switchers, common switch date, zero baseline,"
-        di as text    "                 heterogeneous dose at the switch."
+        di as text    "                 heterogeneous, non-negative dose at the switch."
         if (!any_switchers)         di as text "     - failed: no switchers"
         if (!same_Fg)               di as text "     - failed: switch dates differ across groups"
         if (!zero_baseline)         di as text "     - failed: baseline treatment not 0 for all groups"
         if (!heterog_dose)          di as text "     - failed: size of first change does not vary"
+        if (any_switchers & !nonneg_dose) di as text "     - failed: some doses at the switch are negative"
 
         * ---- SFSD ----
         di as text    "   SFSD requires: switchers, and two groups sharing a baseline"
@@ -653,6 +824,18 @@ program define whichDIDshouldIuse, rclass
     return scalar zero_baseline        = zero_baseline
     return scalar common_baseline      = common_baseline
     return scalar heterog_dose         = heterog_dose
+
+    * HAD sub-case. had_case is empty unless the design is HAD; the qs_*
+    * scalars are missing unless did_had's test was run.
+    return local  had_case             "`had_case'"
+    return scalar nonneg_dose          = nonneg_dose
+    return scalar n_stayers            = n_stayers
+    return scalar had_d_min            = had_d_min
+    return scalar had_tie              = had_tie
+    return scalar qs_stat              = qs_stat
+    return scalar qs_pval              = qs_pval
+    return scalar qs_n                 = qs_n
+    return scalar qs_reject            = qs_reject
 
     return scalar sfsd_pair            = sfsd_pair
     return scalar n_baseline_cells     = n_baseline_cells
