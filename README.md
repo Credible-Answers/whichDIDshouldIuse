@@ -299,6 +299,8 @@ place, whatever it is." Only the strict one drives the branches.
 | `r(nonneg_dose)` | 1 if no switcher's dose at the switch is negative (required for HAD) |
 | `r(had_d_min)` | Lowest positive dose at the switch |
 | `r(had_tie)` | 1 if two or more switchers share that lowest dose |
+| `r(n_at_d_min)` | Switchers at the lowest dose — the comparison arm of the `1(D > d_min)` 2SLS the tie case suggests |
+| `r(n_above_d_min)` | Switchers strictly above it — the treated arm. The smaller of the two arms binds: one group on either side makes that instrument weak |
 | `r(qs_stat)`, `r(qs_pval)`, `r(qs_n)` | `did_had`'s QS statistic, its p-value, and the number of groups it used; missing unless `did_had` was run |
 | `r(qs_reject)` | 1 if quasi-stayers are rejected at 5% (or there is a tie); missing if not assessed |
 

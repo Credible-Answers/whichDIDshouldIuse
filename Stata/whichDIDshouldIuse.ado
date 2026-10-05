@@ -75,7 +75,10 @@
                      does not reject at 5%
       none           no stayers, and the QS test rejects -- or the two
                      lowest doses tie (a mass point), where the test
-                     statistic is undefined
+                     statistic is undefined. In the tie case the report
+                     suggests a 2SLS with 1(D > d_min) as instrument;
+                     r(n_at_d_min) and r(n_above_d_min) give that
+                     instrument's two arms, and the smaller one binds.
       undetermined   no stayers, and did_had could not be run
     The QS test is did_had's own, read from e(estimates). did_had runs in a
     separate frame (Stata 16+), because it calls preserve and this program
@@ -459,8 +462,21 @@ program define whichDIDshouldIuse, rclass
     * A tie makes did_had's QS statistic D(1)/(D(2)-D(1)) undefined.
     qui sum d if t == Fg & Fg < Tplus1 & d > 0
     scalar had_d_min = cond(r(N) > 0, r(min), .)
+
+    * The two arms of the 1(d > had_d_min) instrument the tie branch suggests:
+    * groups sitting AT the lowest positive dose (the comparison arm, i.e. the
+    * mass point) and groups strictly above it (the treated arm). The SMALLER
+    * arm governs whether that 2SLS is informative, so both are reported --
+    * a large mass point with one group above it is a weak instrument, and
+    * counting only one arm would hide that.
+    *
+    * When had_d_min is missing (no positive dose at all) both comparisons are
+    * false for every row, so both counts are 0 and had_tie is 0, as before.
     qui count if t == Fg & Fg < Tplus1 & d == had_d_min
-    scalar had_tie   = (r(N) >= 2)
+    scalar n_at_d_min    = r(N)
+    qui count if t == Fg & Fg < Tplus1 & d > had_d_min
+    scalar n_above_d_min = r(N)
+    scalar had_tie       = (n_at_d_min >= 2)
 
     * ---- SFSD: a same-baseline pair with different first-switch dates ------ *
     *
@@ -531,6 +547,10 @@ program define whichDIDshouldIuse, rclass
         di as text    "  had_d_min            = " as result had_d_min ///
            as text    "   (lowest positive dose at the switch)"
         di as text    "  had_tie              = " as result had_tie
+        di as text    "  n_at_d_min           = " as result n_at_d_min ///
+           as text    "   (groups at the lowest dose)"
+        di as text    "  n_above_d_min        = " as result n_above_d_min ///
+           as text    "   (groups above it)"
         di as text    "  sfsd_pair            = " as result sfsd_pair ///
            as text    "   (groups in cells with a usable pair: " as result n_sfsd_groups as text ")"
         di as text    "  n_baseline_cells     = " as result n_baseline_cells
@@ -702,10 +722,15 @@ program define whichDIDshouldIuse, rclass
             di as text "  Sub-case: " as result "no stayers or quasi-stayers" as text " -- the lowest dose"
             di as text "  is not close to 0."
             if (had_tie) {
-                di as text "    Two or more groups share the lowest dose (" as result had_d_min ///
-                   as text "): a mass point,"
-                di as text "    not a quasi-stayer. did_had's QS statistic is undefined here."
-                di as text "    The estimand reduces to 2SLS with 1(d > " as result had_d_min as text ") as instrument."
+                di as text "    " as result n_at_d_min as text " groups share the lowest dose (" ///
+                   as result had_d_min as text ") and " as result n_above_d_min ///
+                   as text " are above it:"
+                di as text "    a mass point, not a quasi-stayer. did_had's QS statistic is"
+                di as text "    undefined here. If that mass point is genuine -- not an artifact"
+                di as text "    of a rounded dose -- the estimand reduces to 2SLS with"
+                di as text "    1(d > " as result had_d_min as text ") as instrument. The smaller of the two counts"
+                di as text "    above is the binding one: a single group on either side makes"
+                di as text "    that instrument weak."
             }
             else {
                 di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
@@ -832,6 +857,8 @@ program define whichDIDshouldIuse, rclass
     return scalar n_stayers            = n_stayers
     return scalar had_d_min            = had_d_min
     return scalar had_tie              = had_tie
+    return scalar n_at_d_min           = n_at_d_min
+    return scalar n_above_d_min        = n_above_d_min
     return scalar qs_stat              = qs_stat
     return scalar qs_pval              = qs_pval
     return scalar qs_n                 = qs_n

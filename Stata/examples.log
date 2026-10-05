@@ -1,0 +1,530 @@
+
+  ___  ____  ____  ____  ____ ®
+ /__    /   ____/   /   ____/      StataNow 19.5
+___/   /   /___/   /   /___/       SE—Standard Edition
+
+ Statistics and Data Science       Copyright 1985-2025 StataCorp LLC
+                                   StataCorp
+                                   4905 Lakeway Drive
+                                   College Station, Texas 77845 USA
+                                   800-782-8272        https://www.stata.com
+                                   979-696-4600        service@stata.com
+
+Stata license: Unlimited-user network, expiring 23 Nov 2026
+Serial number: 401909309093
+  Licensed to: Alberto Trelles
+               Universidad del Pacifico
+
+Notes:
+      1. Stata is running in batch mode.
+      2. Unicode is supported; see help unicode_advice.
+      3. Maximum number of variables is set to 5,000 but can be increased;
+          see help set_maxvar.
+
+. do examples.do 
+
+. /*===========================================================================
+> ===
+>   examples.do
+>   Exercise the whichDIDshouldIuse package on the four panels in data/.
+> 
+>   This is the driver: it holds NO classification logic. The program lives in
+>   whichDIDshouldIuse.ado in this same folder, and is loaded by Stata on first
+>  use.
+> 
+>   Each block is labelled with the design it is EXPECTED to return, so a
+>   mismatch is visible when reading the log:
+> 
+>     Moser-Voena      CLA    (336 subclasses all switch in 1919)
+>     Wolfers          SAD    (states adopt unilateral divorce at varying dates
+> )
+>     Gentzkow et al.  SFSD   (#newspapers is a non-absorbing count)
+>     Pierce-Schott    HAD    (common 2001 switch, continuous NTR-gap dose;
+>                             sub-case quasi-stayers: did_had QS = 6.15, p = 0.
+> 14)
+> 
+>   Every dataset uses different variable names, which is why this is four
+>   explicit blocks rather than a loop over the .dta files in data/.
+>   (Do NOT write a star-dot-dta glob here: Stata NESTS block comments, so the
+>   slash-star inside such a glob opens a second comment level and silently
+>   swallows the rest of the file.)
+> 
+>   Calls pass , detail on purpose. This log IS the test suite, and a regressio
+> n
+>   that prints only "DESIGN: SAD" where SFSD was expected tells you WHAT broke
+>   but not WHY -- the diagnostics table is the evidence. The Moser-Voena block
+>   additionally runs once WITHOUT detail so the log also carries one sample of
+>   default output, which is what confirms the gating still works.
+> =============================================================================
+> =*/
+. 
+. clear all
+
+. set more off
+
+. 
+. *adopath + "."
+. *discard
+. 
+. 
+. /*===========================================================================
+> ===
+>   Moser-Voena - CLA
+> =============================================================================
+> =*/
+. 
+. use "../data/moser_voena_didtextbook.dta", clear
+
+. 
+. * Default output: the dropped-group warnings and the classification only.
+. * whichDIDshouldIuse  Y        G         T      D
+. whichDIDshouldIuse    patents  subclass  year   twea
+Groups dropped for treatment never observed: 0  (7248 -> 7248)
+
+----------------------------------------------------------------------
+  DESIGN: Classical DID Design (CLA)
+----------------------------------------------------------------------
+  Binary and absorbing treatment, no variation in treatment
+  timing: all 336 treated group(s) experience treatment at
+  t=1919 (period 20), and 6912 group(s) never switch.
+  Estimator: static / event-study TWFE
+  See Chapter 3 of the DID textbook (de Chaisemartin and
+  D'Haultfoeuille).
+----------------------------------------------------------------------
+
+. 
+. * The same panel with full diagnostics, as the other three blocks use. The
+. * r() echoes below read THIS call.
+. whichDIDshouldIuse    patents  subclass  year   twea, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=patents  G=subclass  T=year  D=twea
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:   40 periods, calendar 1900 .. 1939
+       (t normalized to 1..  40; never-switcher sentinel =   41)
+Groups dropped for treatment never observed: 0  (7248 -> 7248)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 7248
+  n_switchers          = 336
+  n_never_treated      = 6912   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   = 20 .. 20
+  switch dates (t_cal) = 1919 .. 1919
+  is_binary            = 1   (d in {0, 1})
+  is_binary01          = 1
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 0   (sd(first_change) = 0)
+  nonneg_dose          = 1   (min dose at the switch = 1)
+  n_stayers            = 6912
+  had_d_min            = 1   (lowest positive dose at the switch)
+  had_tie              = 1
+  n_at_d_min           = 336   (groups at the lowest dose)
+  n_above_d_min        = 0   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 7248)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 1   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Classical DID Design (CLA)
+----------------------------------------------------------------------
+  Binary and absorbing treatment, no variation in treatment
+  timing: all 336 treated group(s) experience treatment at
+  t=1919 (period 20), and 6912 group(s) never switch.
+  Estimator: static / event-study TWFE
+  See Chapter 3 of the DID textbook (de Chaisemartin and
+  D'Haultfoeuille).
+----------------------------------------------------------------------
+
+. 
+. di as text _n "r(design)    = " as result r(design)
+
+r(design)    = CLA
+
+. di as text    "r(estimator) = " as result r(estimator)
+r(estimator) = static / event-study TWFE
+
+. 
+. di as text _n "SFSD diagnostics:"
+
+SFSD diagnostics:
+
+. di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+  r(sfsd_pair)        = 1
+
+. di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+  r(n_baseline_cells) = 1
+
+. di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
+  r(n_sfsd_cells)     = 1
+
+. 
+. 
+. /*===========================================================================
+> ===
+>   Wolfers - SAD
+> =============================================================================
+> =*/
+. 
+. use "../data/wolfers2006_didtextbook.dta", clear
+(Divorce data from Wolfers (2006) AER)
+
+. 
+. * whichDIDshouldIuse  Y        G         T      D
+. whichDIDshouldIuse div_rate state year udl, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=div_rate  G=state  T=year  D=udl
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:   33 periods, calendar 1956 .. 1988
+       (t normalized to 1..  33; never-switcher sentinel =   34)
+Groups dropped for treatment never observed: 0  (51 -> 51)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 51
+  n_switchers          = 29
+  n_never_treated      = 22   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 0   (sd(Fg|switchers) = 2.9277003)
+  switch periods (t)   = 14 .. 30
+  switch dates (t_cal) = 1969 .. 1985
+  is_binary            = 1   (d in {0, 1})
+  is_binary01          = 1
+  is_absorbing         = 1
+  zero_baseline        = 0   (groups with d_baseline!=0: 2)
+  common_baseline      = 0
+  heterog_dose         = 0   (sd(first_change) = 0)
+  nonneg_dose          = 1   (min dose at the switch = 1)
+  n_stayers            = 22
+  had_d_min            = 1   (lowest positive dose at the switch)
+  had_tie              = 1
+  n_at_d_min           = 29   (groups at the lowest dose)
+  n_above_d_min        = 0   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 49)
+  n_baseline_cells     = 2
+  n_sfsd_cells         = 1   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Staggered Adoption Design (SAD)
+----------------------------------------------------------------------
+  Binary and absorbing treatment, with variation in treatment
+  timing across the 29 switching group(s): first switches
+  occur between t=1969 and t=1985.
+  Estimator: csdid, did_multiplegt_dyn, or did2s
+  See Chapter 6 of the DID textbook.
+----------------------------------------------------------------------
+
+. 
+. di as text _n "r(design)    = " as result r(design)
+
+r(design)    = SAD
+
+. di as text    "r(estimator) = " as result r(estimator)
+r(estimator) = csdid, did_multiplegt_dyn, or did2s
+
+. 
+. di as text _n "SFSD diagnostics:"
+
+SFSD diagnostics:
+
+. di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+  r(sfsd_pair)        = 1
+
+. di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+  r(n_baseline_cells) = 2
+
+. di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
+  r(n_sfsd_cells)     = 1
+
+. 
+. 
+. /*===========================================================================
+> ===
+>   Gentzkow et. al - SFSD
+> =============================================================================
+> =*/
+. 
+. use "../data/gentzkowetal_didtextbook.dta", clear
+
+. 
+. * whichDIDshouldIuse  Y        G         T      D
+. whichDIDshouldIuse prestout cnty90 year numdailies, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=prestout  G=cnty90  T=year  D=numdailies
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:   16 periods, calendar 1868 .. 1928
+       (t normalized to 1..  16; never-switcher sentinel =   17)
+Groups dropped for treatment never observed: 0  (1195 -> 1195)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        456
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              13
+  gap right before switch, demoted to control:   12
+  controls leaving the panel early:              1
+  switchers with d missing after the switch:     25
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 1195
+  n_switchers          = 1149
+  n_never_treated      = 46   (usable at the earliest switch)
+  n_truncated_controls = 13
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 0   (sd(Fg|switchers) = 3.9039896)
+  switch periods (t)   =  2 .. 16
+  switch dates (t_cal) = 1872 .. 1928
+  is_binary            = 0   (d in {0, 45})
+  is_binary01          = 0
+  is_absorbing         = 0
+  zero_baseline        = 0   (groups with d_baseline!=0: 291)
+  common_baseline      = 0
+  heterog_dose         = 1   (sd(first_change) = .84308857)
+  nonneg_dose          = 1   (min dose at the switch = 0)
+  n_stayers            = 46
+  had_d_min            = 1   (lowest positive dose at the switch)
+  had_tie              = 1
+  n_at_d_min           = 758   (groups at the lowest dose)
+  n_above_d_min        = 364   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 1190)
+  n_baseline_cells     = 13
+  n_sfsd_cells         = 8   (cells carrying timing variation)
+  n_post_gap_switchers = 25
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  The panel is not CLA, SAD or HAD, but it does satisfy the
+  staggered first-switch condition: some groups share the same
+  baseline treatment while first switching at different dates.
+  First switches occur between t=1872 and t=1928.
+
+  SFSD is the broadest design tested here. Unlike CLA/SAD it
+  permits NON-ABSORBING treatment (a group may switch more than
+  once, including back to its baseline), and unlike HAD it permits
+  HETEROGENEOUS baseline doses.
+
+  Identifying variation: 8 of 13 baseline cell(s) contain
+  groups that first switch at different dates.
+  Estimator: did_multiplegt_dyn
+  See Chapter 8 of the DID textbook.
+----------------------------------------------------------------------
+
+. 
+. di as text _n "r(design)    = " as result r(design)
+
+r(design)    = SFSD
+
+. di as text    "r(estimator) = " as result r(estimator)
+r(estimator) = did_multiplegt_dyn
+
+. 
+. di as text _n "SFSD diagnostics:"
+
+SFSD diagnostics:
+
+. di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+  r(sfsd_pair)        = 1
+
+. di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+  r(n_baseline_cells) = 13
+
+. di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
+  r(n_sfsd_cells)     = 8
+
+. 
+. 
+. /*===========================================================================
+> ===
+>   Pierce and Schott - HAD (quasi-stayers)
+> 
+>   This file ships WIDE: one row per industry, with time in the variable NAMES
+>   (lemp1997..lemp2000, delta2001..delta2005). It must be reshaped to a long
+>   (Y,G,T,D) panel before whichDIDshouldIuse can see it. The block below follo
+> ws the
+>   textbook's own prep (ch. 7):
+> 
+>     - lemp2001/2002/2004/2005 are rebuilt from lemp2000 plus the deltas.
+>       There is no delta2003, so the panel has a GAP at 2003 -- which is exact
+> ly
+>       what whichDIDshouldIuse's t normalization handles: egen group() makes 2
+> 005 the
+>       period immediately after 2004, so Fg-1 is always a real period.
+>     - ntrgap is a time-INVARIANT cross-sectional dose (0.02 .. 0.64). Setting
+>       it to 0 for years <= 2000 is what creates the zero baseline and the
+>       single common switch date at 2001 (China's WTO accession).
+> 
+>   Note this treatment date is ASSERTED by the prep, not discovered in the dat
+> a.
+> =============================================================================
+> =*/
+. 
+. use "../data/pierce_schott_didtextbook.dta", clear
+
+. 
+. gen lemp2001 = lemp2000 + delta2001
+
+. gen lemp2002 = lemp2000 + delta2002
+
+. gen lemp2004 = lemp2000 + delta2004
+
+. gen lemp2005 = lemp2000 + delta2005
+
+. 
+. reshape long lemp, i(indusid) j(year)
+(j = 1997 1998 1999 2000 2001 2002 2004 2005)
+
+Data                               Wide   ->   Long
+-----------------------------------------------------------------------------
+Number of observations              103   ->   824         
+Number of variables                  26   ->   20          
+j variable (8 values)                     ->   year
+xij variables:
+         lemp1997 lemp1998 ... lemp2005   ->   lemp
+-----------------------------------------------------------------------------
+
+. replace ntrgap = 0 if year <= 2000
+(412 real changes made)
+
+. 
+. * whichDIDshouldIuse  Y     G        T     D
+. whichDIDshouldIuse    lemp  indusid  year  ntrgap, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=lemp  G=indusid  T=year  D=ntrgap
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    8 periods, calendar 1997 .. 2005
+       (t normalized to 1..   8; never-switcher sentinel =    9)
+Groups dropped for treatment never observed: 0  (103 -> 103)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 103
+  n_switchers          = 103
+  n_never_treated      = 0   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 0
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   =  5 ..  5
+  switch dates (t_cal) = 2001 .. 2001
+  is_binary            = 0   (d in {0, .63515973})
+  is_binary01          = 0
+  is_absorbing         = 0
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 1   (sd(first_change) = .13739096)
+  nonneg_dose          = 1   (min dose at the switch = .02028472)
+  n_stayers            = 0
+  had_d_min            = .02028472   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 1   (groups at the lowest dose)
+  n_above_d_min        = 102   (groups above it)
+  sfsd_pair            = 0   (groups in cells with a usable pair: 0)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 0   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=1997); all 103 treated
+  group(s) experience treatment at t=2001, but the size
+  of that change varies across groups.
+
+  Sub-case: quasi-stayers -- no group remains untreated,
+  but did_had's test does not reject that some doses are close to 0:
+    QS =  6.150, p = 0.140  (N = 103, reject at 5% if QS > 19)
+  WATT is identified, using the quasi-stayers as controls; it is
+  estimated at a slower rate, with bias-corrected CIs.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+. 
+. di as text _n "r(design)    = " as result r(design)
+
+r(design)    = HAD
+
+. di as text    "r(estimator) = " as result r(estimator)
+r(estimator) = did_had
+
+. 
+. di as text _n "SFSD diagnostics:"
+
+SFSD diagnostics:
+
+. di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
+  r(sfsd_pair)        = 0
+
+. di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
+  r(n_baseline_cells) = 1
+
+. di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
+  r(n_sfsd_cells)     = 0
+
+. 
+. di as text _n "HAD sub-case (did_had's quasi-stayer test):"
+
+HAD sub-case (did_had's quasi-stayer test):
+
+. di as text    "  r(had_case)  = " as result r(had_case)
+  r(had_case)  = quasi-stayers
+
+. di as text    "  r(qs_stat)   = " as result r(qs_stat)
+  r(qs_stat)   = 6.149888
+
+. di as text    "  r(qs_pval)   = " as result r(qs_pval)
+  r(qs_pval)   = .13986233
+
+. 
+end of do-file
