@@ -56,10 +56,18 @@
     modes reduce to the same rules.
 
   DISPLAY
-    detail gates the DIAGNOSTICS block, the input echo and the panel summary.
-    The dropped-group lines and, in default mode, the missing-treatment block
-    are NOT gated: they report changes to the caller's sample, which are
-    warnings rather than diagnostics.
+    A default run prints the classification and nothing else -- that is the
+    point of the default run. Everything else lives in section 8a, AFTER the
+    report, behind detail: the input echo, the panel summary, the full
+    sample-change accounting, the missing-treatment breakdown and the
+    DIAGNOSTICS block.
+
+    The one exception is a "Groups dropped ..." line, which prints ABOVE the
+    report WHEN IT IS NONZERO even without detail. Dropping groups changes
+    the caller's sample, so it is a warning rather than a diagnostic and has
+    to be visible to someone reading only the top of a log. At zero it says
+    nothing, so it is left to the appendix, which reports the count either
+    way.
 
     Normal output is "as text"; computed values are "as result". "as error"
     is reserved for genuine errors, of which this program has none. Within a
@@ -75,11 +83,32 @@
                      does not reject at 5%
       none           no stayers, and the QS test rejects -- or the two
                      lowest doses tie (a mass point), where the test
-                     statistic is undefined
+                     statistic is undefined. In the tie case the report
+                     suggests a 2SLS with 1(D > d_min) as instrument;
+                     r(n_at_d_min) and r(n_above_d_min) give that
+                     instrument's two arms, and the smaller one binds.
       undetermined   no stayers, and did_had could not be run
     The QS test is did_had's own, read from e(estimates). did_had runs in a
     separate frame (Stata 16+), because it calls preserve and this program
     already holds one; the caller's e() is held and restored around it.
+
+  SFSD SUB-CASES
+    When the design is SFSD, r(sfsd_case) says which route reached it
+    (Chapter 8):
+      shared-baseline       the usual condition: a pair of groups sharing a
+                            baseline treatment value first switch at
+                            different dates (sfsd_pair = 1)
+      continuous-baseline   no two groups share a baseline, so sfsd_pair is
+                            0, but first-switch timing varies. This is the
+                            8.3.5.1 extension (Continuous treatment at
+                            period one): sharing a baseline is NOT an
+                            essential condition, and a continuously
+                            distributed D at t == 1 cannot satisfy it.
+                            Estimated with did_multiplegt_dyn's continuous()
+                            option. Section 7a, checked only once every
+                            other design has been ruled out.
+    r(design) is "SFSD" either way, so a caller comparing against "SFSD"
+    needs no change; r(sfsd_case) separates the two.
 
   DEPENDENCY
     distinct (SSC):  ssc install distinct
@@ -112,18 +141,8 @@ program define whichDIDshouldIuse, rclass
     local Tvar "`3'"
     local Dvar "`4'"
 
-    * Gating idiom: quote BOTH sides, or the absent option expands to
-    * if ( != "") -- a syntax error on the default path.
-    if ("`detail'" != "") {
-        di as text _n "{hline 70}"
-        di as text    "  whichDIDshouldIuse:  Y=" as result "`Yvar'" ///
-                      as text "  G=" as result "`Gvar'" ///
-                      as text "  T=" as result "`Tvar'" ///
-                      as text "  D=" as result "`Dvar'"
-        if ("`strict'" != "") di as text "  missing treatment: strict"
-        else                  di as text "  missing treatment: default (less strict)"
-        di as text    "{hline 70}"
-    }
+    * The input echo that used to stand here is printed in section 8a, below
+    * the report, so the classification comes first.
 
     preserve
 
@@ -164,13 +183,7 @@ program define whichDIDshouldIuse, rclass
     order g t t_cal d y
     sort g t
 
-    if ("`detail'" != "") {
-        di as text _n "Panel: " as result %4.0f Tmax ///
-           as text " periods, calendar " as result %4.0f cal_min ///
-           as text " .. " as result %4.0f cal_max
-        di as text    "       (t normalized to 1.." as result %4.0f Tmax ///
-           as text "; never-switcher sentinel = " as result %4.0f Tplus1 as text ")"
-    }
+    * The panel summary that used to stand here is printed in section 8a.
 
     * ---------------------------------------------------------------------- *
     * 2. Baseline treatment
@@ -204,11 +217,17 @@ program define whichDIDshouldIuse, rclass
         scalar n_groups_baseline  = r(ndistinct)
         scalar n_dropped_baseline = n_groups_raw - n_groups_baseline
 
-        * NOT gated by detail: groups discarded from the caller's sample.
-        di as text "Groups dropped for missing baseline (d at t=1, cal " ///
-           as result %4.0f cal_min as text "): " as result n_dropped_baseline ///
-           as text "  (" as result n_groups_raw as text " -> " ///
-           as result n_groups_baseline as text ")"
+        * Printed here, above the report, ONLY when it actually fires: groups
+        * discarded from the caller's sample are a warning, and a warning
+        * belongs above the answer. At zero it says nothing, so it is left to
+        * the appendix (section 8a), which reports the count either way and
+        * keeps a clean panel's default output down to the verdict alone.
+        if (n_dropped_baseline > 0) {
+            di as text "Groups dropped for missing baseline (d at t=1, cal " ///
+               as result %4.0f cal_min as text "): " as result n_dropped_baseline ///
+               as text "  (" as result n_groups_raw as text " -> " ///
+               as result n_groups_baseline as text ")"
+        }
     }
     else {
         * Entry date E_g: first period with y OR d observed. Rows created by
@@ -234,11 +253,13 @@ program define whichDIDshouldIuse, rclass
         qui gen    d_baseline_temp = d if t == FD_g
         qui bys g: egen d_baseline = min(d_baseline_temp)
 
-        * NOT gated by detail: groups discarded from the caller's sample.
-        di as text "Groups dropped for treatment never observed: " ///
-           as result n_dropped_alld ///
-           as text "  (" as result n_groups_raw as text " -> " ///
-           as result n_groups_baseline as text ")"
+        * Above the report only when it fires -- see the strict branch.
+        if (n_dropped_alld > 0) {
+            di as text "Groups dropped for treatment never observed: " ///
+               as result n_dropped_alld ///
+               as text "  (" as result n_groups_raw as text " -> " ///
+               as result n_groups_baseline as text ")"
+        }
     }
 
     * ---------------------------------------------------------------------- *
@@ -276,11 +297,13 @@ program define whichDIDshouldIuse, rclass
         scalar n_groups           = r(ndistinct)
         scalar n_dropped_pretreat = n_groups_baseline - n_groups
 
-        * NOT gated by detail, for the same reason as the baseline warning.
-        di as text "Groups dropped for pre-treatment violations: " ///
-           as result n_dropped_pretreat ///
-           as text "  (" as result n_groups_baseline as text " -> " ///
-           as result n_groups as text ")"
+        * Above the report only when it fires -- see the baseline warning.
+        if (n_dropped_pretreat > 0) {
+            di as text "Groups dropped for pre-treatment violations: " ///
+               as result n_dropped_pretreat ///
+               as text "  (" as result n_groups_baseline as text " -> " ///
+               as result n_groups as text ")"
+        }
     }
     else {
         * LDBF_g: last period before Fg with d observed. For a never-switcher
@@ -347,18 +370,9 @@ program define whichDIDshouldIuse, rclass
     qui count if first_g & post_gap == 1
     scalar n_post_gap_switchers = r(N)
 
-    * Diagnostic breakdown of the default-rule adjustments -- gated behind
-    * detail like the rest of section 6. Unlike the "Groups dropped" warnings,
-    * nothing here is discarded from the sample, so it is not a safety warning.
-    if ("`strict'" == "") & ("`detail'" != "") {
-        di as text "Missing treatment (default rules; use , strict to drop instead):"
-        di as text "  late entrants, baseline taken at entry:        " as result n_late_entry
-        di as text "  d missing at start, baseline taken later:      " as result n_missing_at_start
-        di as text "  pre-switch gaps read as baseline:              " as result n_filled_pre_gap
-        di as text "  gap right before switch, demoted to control:   " as result n_demoted
-        di as text "  controls leaving the panel early:              " as result n_exit_controls
-        di as text "  switchers with d missing after the switch:     " as result n_post_gap_switchers
-    }
+    * The breakdown of the default-rule adjustments is printed in section 8a
+    * with the rest of the detail output. Nothing here is discarded from the
+    * sample, so it is a diagnostic, not a safety warning.
 
     * ---------------------------------------------------------------------- *
     * 5. Scalar flags
@@ -459,8 +473,21 @@ program define whichDIDshouldIuse, rclass
     * A tie makes did_had's QS statistic D(1)/(D(2)-D(1)) undefined.
     qui sum d if t == Fg & Fg < Tplus1 & d > 0
     scalar had_d_min = cond(r(N) > 0, r(min), .)
+
+    * The two arms of the 1(d > had_d_min) instrument the tie branch suggests:
+    * groups sitting AT the lowest positive dose (the comparison arm, i.e. the
+    * mass point) and groups strictly above it (the treated arm). The SMALLER
+    * arm governs whether that 2SLS is informative, so both are reported --
+    * a large mass point with one group above it is a weak instrument, and
+    * counting only one arm would hide that.
+    *
+    * When had_d_min is missing (no positive dose at all) both comparisons are
+    * false for every row, so both counts are 0 and had_tie is 0, as before.
     qui count if t == Fg & Fg < Tplus1 & d == had_d_min
-    scalar had_tie   = (r(N) >= 2)
+    scalar n_at_d_min    = r(N)
+    qui count if t == Fg & Fg < Tplus1 & d > had_d_min
+    scalar n_above_d_min = r(N)
+    scalar had_tie       = (n_at_d_min >= 2)
 
     * ---- SFSD: a same-baseline pair with different first-switch dates ------ *
     *
@@ -496,49 +523,10 @@ program define whichDIDshouldIuse, rclass
     }
 
     * ---------------------------------------------------------------------- *
-    * 6. Diagnostics
+    * 6. Diagnostics -- printed in section 8a, after the report, so that the
+    *    classification comes first. The number is kept so sections 7..9 and
+    *    the comments that cite them do not shift.
     * ---------------------------------------------------------------------- *
-
-    if ("`detail'" != "") {
-        di as text _n "{hline 70}"
-        di as text    "  DIAGNOSTICS"
-        di as text    "{hline 70}"
-        di as text    "  n_groups             = " as result n_groups
-        di as text    "  n_switchers          = " as result n_switchers
-        di as text    "  n_never_treated      = " as result n_never_treated ///
-           as text    "   (usable at the earliest switch)"
-        di as text    "  n_truncated_controls = " as result n_truncated_controls
-        di as text    "  never_treated_groups = " as result never_treated_groups
-        di as text    "  any_switchers        = " as result any_switchers
-        di as text    "  same_Fg              = " as result same_Fg ///
-           as text    "   (sd(Fg|switchers) = " as result sd_Fg_value as text ")"
-        di as text    "  switch periods (t)   = " as result %2.0f first_switch_t ///
-           as text    " .. " as result %2.0f last_switch_t
-        di as text    "  switch dates (t_cal) = " as result %4.0f first_switch_cal ///
-           as text    " .. " as result %4.0f last_switch_cal
-        di as text    "  is_binary            = " as result is_binary ///
-           as text    "   (d in {" as result d_min as text ", " as result d_max as text "})"
-        di as text    "  is_binary01          = " as result is_binary01
-        di as text    "  is_absorbing         = " as result is_absorbing
-        di as text    "  zero_baseline        = " as result zero_baseline ///
-           as text    "   (groups with d_baseline!=0: " as result n_nonzero_baseline as text ")"
-        di as text    "  common_baseline      = " as result common_baseline
-        di as text    "  heterog_dose         = " as result heterog_dose ///
-           as text    "   (sd(first_change) = " as result sd_change_value as text ")"
-        di as text    "  nonneg_dose          = " as result nonneg_dose ///
-           as text    "   (min dose at the switch = " as result min_dose_Fg as text ")"
-        di as text    "  n_stayers            = " as result n_stayers
-        di as text    "  had_d_min            = " as result had_d_min ///
-           as text    "   (lowest positive dose at the switch)"
-        di as text    "  had_tie              = " as result had_tie
-        di as text    "  sfsd_pair            = " as result sfsd_pair ///
-           as text    "   (groups in cells with a usable pair: " as result n_sfsd_groups as text ")"
-        di as text    "  n_baseline_cells     = " as result n_baseline_cells
-        di as text    "  n_sfsd_cells         = " as result n_sfsd_cells ///
-           as text    "   (cells carrying timing variation)"
-        di as text    "  n_post_gap_switchers = " as result n_post_gap_switchers
-        di as text    "{hline 70}"
-    }
 
     * ---------------------------------------------------------------------- *
     * 7. Classification
@@ -549,6 +537,7 @@ program define whichDIDshouldIuse, rclass
 
     local design    "OTHER"
     local estimator ""
+    local sfsd_case ""
 
     if (any_switchers & is_binary01 & is_absorbing & same_Fg & never_treated_groups & zero_baseline) {
         local design    "CLA"
@@ -565,6 +554,41 @@ program define whichDIDshouldIuse, rclass
     else if (any_switchers & sfsd_pair) {
         local design    "SFSD"
         local estimator "did_multiplegt_dyn"
+        local sfsd_case "shared-baseline"
+    }
+
+    * ---------------------------------------------------------------------- *
+    * 7a. SFSD fallback: continuously distributed baseline treatment
+    *
+    *    The summary calls SFSD condition (i) -- a PAIR of groups sharing a
+    *    baseline value -- NOT essential. The book relaxes it in 8.3.5.1
+    *    (Continuous treatment at period one, in 8.3.5 Extensions) to a
+    *    continuously distributed D at t == 1, where by construction no two
+    *    groups share a baseline, every d_baseline cell is a singleton, and
+    *    sfsd_pair is 0 for that reason ALONE. Condition (ii), variation in
+    *    when groups first switch, is the essential one -- and it is exactly
+    *    !same_Fg, i.e. V(Fg) > 0 over switchers.
+    *
+    *    So a panel that reached OTHER while having timing variation is an
+    *    SFSD under 8.3.5.1, and did_multiplegt_dyn can estimate it with the
+    *    continuous() option.
+    *
+    *    Deliberately NOT a fifth branch of the chain above: this is a
+    *    RELAXATION of the SFSD branch, not a further step in the
+    *    most-restrictive-first nesting, and it must fire only once every
+    *    other design has been ruled out. Hence the guard on design.
+    *
+    *    same_Fg is 1 when sd(Fg) is missing (a single switcher), so a lone
+    *    switcher correctly does not reach here: one group cannot satisfy
+    *    condition (ii).
+    * ---------------------------------------------------------------------- *
+
+    if ("`design'" == "OTHER") {
+        if (any_switchers & !same_Fg) {
+            local design    "SFSD"
+            local estimator "did_multiplegt_dyn, with the continuous() option"
+            local sfsd_case "continuous-baseline"
+        }
     }
 
     * ---------------------------------------------------------------------- *
@@ -702,10 +726,15 @@ program define whichDIDshouldIuse, rclass
             di as text "  Sub-case: " as result "no stayers or quasi-stayers" as text " -- the lowest dose"
             di as text "  is not close to 0."
             if (had_tie) {
-                di as text "    Two or more groups share the lowest dose (" as result had_d_min ///
-                   as text "): a mass point,"
-                di as text "    not a quasi-stayer. did_had's QS statistic is undefined here."
-                di as text "    The estimand reduces to 2SLS with 1(d > " as result had_d_min as text ") as instrument."
+                di as text "    " as result n_at_d_min as text " groups share the lowest dose (" ///
+                   as result had_d_min as text ") and " as result n_above_d_min ///
+                   as text " are above it:"
+                di as text "    a mass point, not a quasi-stayer. did_had's QS statistic is"
+                di as text "    undefined here. If that mass point is genuine -- not an artifact"
+                di as text "    of a rounded dose -- the estimand reduces to 2SLS with"
+                di as text "    1(d > " as result had_d_min as text ") as instrument. The smaller of the two counts"
+                di as text "    above is the binding one: a single group on either side makes"
+                di as text "    that instrument weak."
             }
             else {
                 di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
@@ -728,6 +757,37 @@ program define whichDIDshouldIuse, rclass
             di as text "  Estimator: `estimator' (it runs the quasi-stayer test itself)"
         }
         di as text    "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
+    }
+    else if ("`sfsd_case'" == "continuous-baseline") {
+        di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
+        di as text    "{hline 70}"
+        di as text    "  Reached through the CONTINUOUS BASELINE TREATMENT extension."
+        di as text    ""
+        di as text    "  No two groups share the same baseline treatment: all " ///
+           as result %4.0f n_baseline_cells as text " baseline"
+        di as text    "  cell(s) are singletons, one per group. That is the signature of a"
+        di as text    "  CONTINUOUSLY DISTRIBUTED treatment at period one, not a defect --"
+        di as text    "  with d_baseline continuous, no two groups CAN share a value."
+        di as text    ""
+        di as text    "  The usual SFSD condition asks for a pair of groups sharing a"
+        di as text    "  baseline that first switch at different dates. The first half of"
+        di as text    "  that is not essential, and is relaxed in section 8.3.5.1. What"
+        di as text    "  is essential -- variation in WHEN groups first switch -- holds"
+        di as text    "  here: sd(Fg) over switchers = " as result sd_Fg_value as text ", with the " ///
+           as result %4.0f n_switchers as text " switcher(s)"
+        di as text    "  first switching between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    ""
+        di as text    "  Estimator: `estimator'"
+        di as text    "  The continuous() option is REQUIRED for this design. Without it"
+        di as text    "  did_multiplegt_dyn looks for same-baseline comparison groups that"
+        di as text    "  a continuous period-one treatment does not provide."
+        di as text    ""
+        di as text    "  CHECK THIS: the verdict is inferred from every baseline value"
+        di as text    "  being distinct, not from a shared-baseline pair. Confirm your D"
+        di as text    "  at period one really is continuous -- an ID or a group code passed"
+        di as text    "  as D would look exactly the same way."
+        di as text    "  See Chapter 8 of the DID textbook, section 8.3.5.1 (Continuous"
+        di as text    "  treatment at period one), in 8.3.5 Extensions."
     }
     else if ("`design'" == "SFSD") {
         di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
@@ -781,10 +841,19 @@ program define whichDIDshouldIuse, rclass
         if (any_switchers & !nonneg_dose) di as text "     - failed: some doses at the switch are negative"
 
         * ---- SFSD ----
+        * Mirrors section 7 AND the 7a fallback. Reaching OTHER with switchers
+        * means same_Fg was 1, else 7a would have fired -- so say that too,
+        * or the user sees only the baseline-pair failure and cannot tell why
+        * the 8.3.5.1 extension did not rescue the panel.
         di as text    "   SFSD requires: switchers, and two groups sharing a baseline"
         di as text    "                  treatment value that first switch at different dates."
         if (!any_switchers)         di as text "     - failed: no switchers"
         if (!sfsd_pair)             di as text "     - failed: no two groups share a baseline treatment value while first switching at different dates"
+        di as text    "   SFSD also admits a continuously distributed baseline treatment"
+        di as text    "                  (section 8.3.5.1), which needs only variation in"
+        di as text    "                  when groups first switch."
+        if (!any_switchers)         di as text "     - failed: no switchers"
+        if (same_Fg)                di as text "     - failed: no variation in first-switch timing either, so the continuous-baseline extension does not apply"
     }
 
     * The absorbing verdict ignores unobserved d, so a reversal hidden in a
@@ -797,6 +866,117 @@ program define whichDIDshouldIuse, rclass
     }
 
     di as text "{hline 70}"
+
+    * ---------------------------------------------------------------------- *
+    * 8a. Detail appendix
+    *
+    *    The input echo (was section 1), the panel summary (was section 1) and
+    *    the diagnostics dump (was section 6), all gated behind -detail-.
+    *    Printed HERE, below the report, so the classification is the first
+    *    thing the user sees and the scalars behind it read as supporting
+    *    evidence rather than a preamble.
+    *
+    *    Pure display, so position cannot affect any result: every name below
+    *    is a local or a named scalar, each assigned once earlier and never
+    *    reassigned. Scalars and locals are not part of the dataset, so they
+    *    would survive -restore- too.
+    *
+    *    NOT here, deliberately: the dropped-group and missing-treatment
+    *    lines. Those report groups discarded from the caller's sample -- a
+    *    warning, not a diagnostic -- so they are ungated and stay ABOVE the
+    *    report, where someone skimming the top of a log will see them.
+    *
+    *    Gating idiom: quote BOTH sides, or the absent option expands to
+    *    if ( != "") -- a syntax error on the default path.
+    * ---------------------------------------------------------------------- *
+
+    if ("`detail'" != "") {
+        di as text _n "{hline 70}"
+        di as text    "  whichDIDshouldIuse:  Y=" as result "`Yvar'" ///
+                      as text "  G=" as result "`Gvar'" ///
+                      as text "  T=" as result "`Tvar'" ///
+                      as text "  D=" as result "`Dvar'"
+        if ("`strict'" != "") di as text "  missing treatment: strict"
+        else                  di as text "  missing treatment: default (less strict)"
+        di as text    "{hline 70}"
+
+        di as text _n "Panel: " as result %4.0f Tmax ///
+           as text " periods, calendar " as result %4.0f cal_min ///
+           as text " .. " as result %4.0f cal_max
+        di as text    "       (t normalized to 1.." as result %4.0f Tmax ///
+           as text "; never-switcher sentinel = " as result %4.0f Tplus1 as text ")"
+
+        * Sample changes. Above the report these print only when nonzero, so
+        * repeat them here unconditionally: under -detail- the full accounting
+        * should be visible even when nothing was dropped.
+        di as text _n "Groups dropped:"
+        if ("`strict'" != "") {
+            di as text "  missing baseline (d at t=1, cal " ///
+               as result %4.0f cal_min as text "):          " ///
+               as result n_dropped_baseline
+            di as text "  pre-treatment violations:              " ///
+               as result n_dropped_pretreat
+        }
+        else {
+            di as text "  treatment never observed:              " ///
+               as result n_dropped_alld
+        }
+        di as text    "  groups retained:                       " as result n_groups ///
+           as text    " of " as result n_groups_raw
+
+        if ("`strict'" == "") {
+            di as text _n "Missing treatment (default rules; use , strict to drop instead):"
+            di as text "  late entrants, baseline taken at entry:        " as result n_late_entry
+            di as text "  d missing at start, baseline taken later:      " as result n_missing_at_start
+            di as text "  pre-switch gaps read as baseline:              " as result n_filled_pre_gap
+            di as text "  gap right before switch, demoted to control:   " as result n_demoted
+            di as text "  controls leaving the panel early:              " as result n_exit_controls
+            di as text "  switchers with d missing after the switch:     " as result n_post_gap_switchers
+        }
+
+        di as text _n "{hline 70}"
+        di as text    "  DIAGNOSTICS"
+        di as text    "{hline 70}"
+        di as text    "  n_groups             = " as result n_groups
+        di as text    "  n_switchers          = " as result n_switchers
+        di as text    "  n_never_treated      = " as result n_never_treated ///
+           as text    "   (usable at the earliest switch)"
+        di as text    "  n_truncated_controls = " as result n_truncated_controls
+        di as text    "  never_treated_groups = " as result never_treated_groups
+        di as text    "  any_switchers        = " as result any_switchers
+        di as text    "  same_Fg              = " as result same_Fg ///
+           as text    "   (sd(Fg|switchers) = " as result sd_Fg_value as text ")"
+        di as text    "  switch periods (t)   = " as result %2.0f first_switch_t ///
+           as text    " .. " as result %2.0f last_switch_t
+        di as text    "  switch dates (t_cal) = " as result %4.0f first_switch_cal ///
+           as text    " .. " as result %4.0f last_switch_cal
+        di as text    "  is_binary            = " as result is_binary ///
+           as text    "   (d in {" as result d_min as text ", " as result d_max as text "})"
+        di as text    "  is_binary01          = " as result is_binary01
+        di as text    "  is_absorbing         = " as result is_absorbing
+        di as text    "  zero_baseline        = " as result zero_baseline ///
+           as text    "   (groups with d_baseline!=0: " as result n_nonzero_baseline as text ")"
+        di as text    "  common_baseline      = " as result common_baseline
+        di as text    "  heterog_dose         = " as result heterog_dose ///
+           as text    "   (sd(first_change) = " as result sd_change_value as text ")"
+        di as text    "  nonneg_dose          = " as result nonneg_dose ///
+           as text    "   (min dose at the switch = " as result min_dose_Fg as text ")"
+        di as text    "  n_stayers            = " as result n_stayers
+        di as text    "  had_d_min            = " as result had_d_min ///
+           as text    "   (lowest positive dose at the switch)"
+        di as text    "  had_tie              = " as result had_tie
+        di as text    "  n_at_d_min           = " as result n_at_d_min ///
+           as text    "   (groups at the lowest dose)"
+        di as text    "  n_above_d_min        = " as result n_above_d_min ///
+           as text    "   (groups above it)"
+        di as text    "  sfsd_pair            = " as result sfsd_pair ///
+           as text    "   (groups in cells with a usable pair: " as result n_sfsd_groups as text ")"
+        di as text    "  n_baseline_cells     = " as result n_baseline_cells
+        di as text    "  n_sfsd_cells         = " as result n_sfsd_cells ///
+           as text    "   (cells carrying timing variation)"
+        di as text    "  n_post_gap_switchers = " as result n_post_gap_switchers
+        di as text    "{hline 70}"
+    }
 
     * ---------------------------------------------------------------------- *
     * 9. Return
@@ -832,6 +1012,8 @@ program define whichDIDshouldIuse, rclass
     return scalar n_stayers            = n_stayers
     return scalar had_d_min            = had_d_min
     return scalar had_tie              = had_tie
+    return scalar n_at_d_min           = n_at_d_min
+    return scalar n_above_d_min        = n_above_d_min
     return scalar qs_stat              = qs_stat
     return scalar qs_pval              = qs_pval
     return scalar qs_n                 = qs_n
@@ -840,6 +1022,12 @@ program define whichDIDshouldIuse, rclass
     return scalar sfsd_pair            = sfsd_pair
     return scalar n_baseline_cells     = n_baseline_cells
     return scalar n_sfsd_cells         = n_sfsd_cells
+
+    * SFSD sub-case. sfsd_case is empty unless the design is SFSD; it says
+    * which route got there -- "shared-baseline" for the usual pair test, or
+    * "continuous-baseline" for the 8.3.5.1 extension, where sfsd_pair is 0
+    * because a continuous D at period one leaves every baseline distinct.
+    return local  sfsd_case            "`sfsd_case'"
 
     return scalar common_switch_t      = common_switch_t
     return scalar common_switch_cal    = common_switch_cal

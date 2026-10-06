@@ -1,0 +1,948 @@
+
+  ___  ____  ____  ____  ____ ®
+ /__    /   ____/   /   ____/      StataNow 19.5
+___/   /   /___/   /   /___/       SE—Standard Edition
+
+ Statistics and Data Science       Copyright 1985-2025 StataCorp LLC
+                                   StataCorp
+                                   4905 Lakeway Drive
+                                   College Station, Texas 77845 USA
+                                   800-782-8272        https://www.stata.com
+                                   979-696-4600        service@stata.com
+
+Stata license: Unlimited-user network, expiring 23 Nov 2026
+Serial number: 401909309093
+  Licensed to: Alberto Trelles
+               Universidad del Pacifico
+
+Notes:
+      1. Stata is running in batch mode.
+      2. Unicode is supported; see help unicode_advice.
+      3. Maximum number of variables is set to 5,000 but can be increased;
+          see help set_maxvar.
+
+. do test_fewdoses.do 
+
+. /*===========================================================================
+> ===
+>   test_fewdoses.do
+>   What happens to whichDIDshouldIuse (and to did_had underneath it) when the
+>   HAD panel has FEWER THAN TWO POSITIVE DOSES at the switch date.
+> 
+>   Working directory must be Stata/. Stata's exit code is NOT reliable: read
+>   the log. There is no PASS/FAIL tally here -- each case prints what it got
+>   next to what is expected, and you compare by eye.
+> 
+>   ---------------------------------------------------------------------------
+>   Why this case is special
+>   ---------------------------------------------------------------------------
+>   did_had's quasi-stayer statistic uses the two smallest POSITIVE doses at
+>   the switch date,
+> 
+>         QS = D_(1) / ( D_(2) - D_(1) ),
+> 
+>   so it needs at least two of them. The package already intercepts the
+>   D_(1) == D_(2) tie before calling did_had (scalar had_tie, section 7b) and
+>   returns had_case = "none". It does NOT intercept the case where D_(2) does
+>   not exist at all: with exactly one positive dose had_tie is 0 (only one
+>   group matches the minimum, not two), so control reaches the else-branch and
+>   did_had is called. Inside did_had, Mata subscripts D_2_np[2,1] on a
+>   one-row vector -- a subscript error (r(3301)), not a silent missing.
+> 
+>   The package wraps that call in -capture- and then -confirm matrix
+>   e(estimates)-, so the failure is absorbed: qs_pval stays missing and
+>   had_case becomes "undetermined". This file checks that this is what
+>   actually happens, and lets you judge whether "undetermined" is the answer
+>   we want -- with one positive dose and no stayers there is, by definition,
+>   no quasi-stayer, so arguably had_case should be "none" for the same reason
+>   the tie case is.
+> 
+>   ---------------------------------------------------------------------------
+>   Cases (all panels: 2001..2006, common switch date 2004, zero baseline)
+>   ---------------------------------------------------------------------------
+>     A  one switcher, one positive dose, no stayers  -> did_had errors inside;
+>                                                        expect "undetermined"
+>     B  one positive dose but stayers present        -> short-circuits on
+>                                                        n_stayers > 0; expect
+>                                                        "stayers"
+>     C  no positive dose at all (negative doses)     -> had_d_min missing;
+>                                                        should not be HAD
+>     D  two DISTINCT positive doses                  -> minimum viable QS test
+>                                                        (control, must work)
+>     E  two TIED lowest positive doses               -> already-handled path;
+>                                                        expect "none"
+> 
+>   C, D and E are controls: they pin the boundaries that are already covered,
+>   so a surprise in A is isolated to the missing-D_(2) case.
+> =============================================================================
+> =*/
+. 
+. clear all
+
+. set more off
+
+. discard
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   CASE A -- one switcher, one positive dose, no stayers
+> 
+>   Note on the construction: any group sitting at d = 0 ON the switch date is
+>   a STAYER, which short-circuits section 7b before did_had is reached. So the
+>   only panel that genuinely has one positive dose and no stayers is a panel
+>   with a SINGLE switcher: g1 leaves baseline, g2 and g3 never switch at all
+>   and are therefore dropped as never-switchers rather than counted as
+>   stayers.
+> 
+>   Expected: design HAD, had_case "undetermined", qs_pval missing,
+>             did_had itself failing with r(3301).
+>   If instead the design comes back as something other than HAD, this path is
+>   unreachable in practice and the gap is moot -- that is a useful answer too.
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n "{hline 78}"
+
+------------------------------------------------------------------------------
+
+. di as text "CASE A -- one switcher, one positive dose, no stayers"
+CASE A -- one switcher, one positive dose, no stayers
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. clear
+
+. input g year y d
+
+             g       year          y          d
+  1. 1 2001 10 0
+  2. 1 2002 10 0
+  3. 1 2003 10 0
+  4. 1 2004 13 3
+  5. 1 2005 13 3
+  6. 1 2006 13 3
+  7. 2 2001 10 0
+  8. 2 2002 10 0
+  9. 2 2003 10 0
+ 10. 2 2004 10 0
+ 11. 2 2005 10 0
+ 12. 2 2006 10 0
+ 13. 3 2001 11 0
+ 14. 3 2002 11 0
+ 15. 3 2003 11 0
+ 16. 3 2004 11 0
+ 17. 3 2005 11 0
+ 18. 3 2006 11 0
+ 19. end
+
+. 
+. * Reference: what does did_had do on its own? Expect a Mata subscript error
+. * (r(3301)), or an exit leaving no e(estimates).
+. di as text _n "--- did_had on its own ---"
+
+--- did_had on its own ---
+
+. capture noisily did_had y g year d, effects(1) graph_off _no_updates
+
+NOTE: 2 groups are untreated at period two
+                 <istmt>:  3301  subscript invalid
+
+. di as text "did_had rc = " as result _rc
+did_had rc = 3301
+
+. capture confirm matrix e(estimates)
+
+. if (_rc == 0) matrix list e(estimates)
+
+. else di as text "e(estimates) does NOT exist"
+e(estimates) does NOT exist
+
+. 
+. di as text _n "--- whichDIDshouldIuse ---"
+
+--- whichDIDshouldIuse ---
+
+. whichDIDshouldIuse y g year d, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=y  G=g  T=year  D=d
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    6 periods, calendar 2001 .. 2006
+       (t normalized to 1..   6; never-switcher sentinel =    7)
+Groups dropped for treatment never observed: 0  (3 -> 3)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 3
+  n_switchers          = 1
+  n_never_treated      = 2   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = .)
+  switch periods (t)   =  4 ..  4
+  switch dates (t_cal) = 2004 .. 2004
+  is_binary            = 1   (d in {0, 3})
+  is_binary01          = 0
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 0   (sd(first_change) = .)
+  nonneg_dose          = 1   (min dose at the switch = 3)
+  n_stayers            = 2
+  had_d_min            = 3   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 1   (groups at the lowest dose)
+  n_above_d_min        = 0   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 3)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 1   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  The panel is not CLA, SAD or HAD, but it does satisfy the
+  staggered first-switch condition: some groups share the same
+  baseline treatment while first switching at different dates.
+  First switches occur between t=2004 and t=2004.
+
+  SFSD is the broadest design tested here. Unlike CLA/SAD it
+  permits NON-ABSORBING treatment (a group may switch more than
+  once, including back to its baseline), and unlike HAD it permits
+  HETEROGENEOUS baseline doses.
+
+  Identifying variation: 1 of 1 baseline cell(s) contain
+  groups that first switch at different dates.
+  Estimator: did_multiplegt_dyn
+  See Chapter 8 of the DID textbook.
+----------------------------------------------------------------------
+
+. di as text _n "  r(design)    = " as result "`r(design)'"   as text "   expec
+> ted HAD"
+
+  r(design)    = SFSD   expected HAD
+
+. di as text    "  r(had_case)  = " as result "`r(had_case)'" as text "   expec
+> ted undetermined"
+  r(had_case)  =    expected undetermined
+
+. di as text    "  r(n_stayers) = " as result r(n_stayers)
+  r(n_stayers) = 2
+
+. di as text    "  r(had_tie)   = " as result r(had_tie)      as text "   expec
+> ted 0"
+  r(had_tie)   = 0   expected 0
+
+. di as text    "  r(had_d_min) = " as result r(had_d_min)
+  r(had_d_min) = 3
+
+. di as text    "  r(qs_stat)   = " as result r(qs_stat)      as text "   expec
+> ted missing"
+  r(qs_stat)   = .   expected missing
+
+. di as text    "  r(qs_pval)   = " as result r(qs_pval)      as text "   expec
+> ted missing"
+  r(qs_pval)   = .   expected missing
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   CASE B -- one positive dose, but stayers present
+> 
+>   g1 and g4 switch; g2 and g3 stay at d = 0 throughout with d observed. If
+>   they register as stayers, section 7b takes the first branch and did_had is
+>   never called.
+> 
+>   Expected: had_case "stayers", qs_pval missing (never computed).
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "CASE B -- one positive dose, stayers present"
+CASE B -- one positive dose, stayers present
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. clear
+
+. input g year y d
+
+             g       year          y          d
+  1. 1 2001 10 0
+  2. 1 2002 10 0
+  3. 1 2003 10 0
+  4. 1 2004 13 3
+  5. 1 2005 13 3
+  6. 1 2006 13 3
+  7. 2 2001 10 0
+  8. 2 2002 10 0
+  9. 2 2003 10 0
+ 10. 2 2004 11 0
+ 11. 2 2005 11 0
+ 12. 2 2006 11 0
+ 13. 3 2001 11 0
+ 14. 3 2002 11 0
+ 15. 3 2003 11 0
+ 16. 3 2004 12 0
+ 17. 3 2005 12 0
+ 18. 3 2006 12 0
+ 19. 4 2001 12 0
+ 20. 4 2002 12 0
+ 21. 4 2003 12 0
+ 22. 4 2004 16 4
+ 23. 4 2005 16 4
+ 24. 4 2006 16 4
+ 25. end
+
+. 
+. whichDIDshouldIuse y g year d, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=y  G=g  T=year  D=d
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    6 periods, calendar 2001 .. 2006
+       (t normalized to 1..   6; never-switcher sentinel =    7)
+Groups dropped for treatment never observed: 0  (4 -> 4)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 4
+  n_switchers          = 2
+  n_never_treated      = 2   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   =  4 ..  4
+  switch dates (t_cal) = 2004 .. 2004
+  is_binary            = 0   (d in {0, 4})
+  is_binary01          = 0
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 1   (sd(first_change) = .70710677)
+  nonneg_dose          = 1   (min dose at the switch = 3)
+  n_stayers            = 2
+  had_d_min            = 3   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 1   (groups at the lowest dose)
+  n_above_d_min        = 1   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 4)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 1   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=2001); all 2 treated
+  group(s) experience treatment at t=2004, but the size
+  of that change varies across groups.
+
+  Sub-case: stayers -- 2 group(s) remain untreated at the switch.
+  ATT and WATT are identified under no-anticipation and parallel
+  trends, and estimable at the usual sqrt(G) rate.
+  Estimator: WATT by ivregress 2sls dY (d = 1(d>0));
+             ATT and WATT by did_multiplegt_stat.
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+. di as text _n "  r(design)    = " as result "`r(design)'"
+
+  r(design)    = HAD
+
+. di as text    "  r(had_case)  = " as result "`r(had_case)'" as text "   expec
+> ted stayers"
+  r(had_case)  = stayers   expected stayers
+
+. di as text    "  r(n_stayers) = " as result r(n_stayers)    as text "   expec
+> ted > 0"
+  r(n_stayers) = 2   expected > 0
+
+. di as text    "  r(had_d_min) = " as result r(had_d_min)
+  r(had_d_min) = 3
+
+. di as text    "  r(qs_pval)   = " as result r(qs_pval)      as text "   expec
+> ted missing"
+  r(qs_pval)   = .   expected missing
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   CASE C -- no positive dose at all
+> 
+>   Every group leaves baseline downward (d: 0 -> negative). had_d_min is
+>   summed over d > 0 only, so r(N) == 0 and had_d_min is missing. This also
+>   trips nonneg_dose, so the panel should not reach HAD in the first place.
+> 
+>   Expected: design NOT HAD, nonneg_dose 0, had_d_min missing, had_case empty.
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "CASE C -- no positive dose (negative doses only)"
+CASE C -- no positive dose (negative doses only)
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. clear
+
+. input g year y d
+
+             g       year          y          d
+  1. 1 2001 10 0
+  2. 1 2002 10 0
+  3. 1 2003 10 0
+  4. 1 2004 8 -2
+  5. 1 2005 8 -2
+  6. 1 2006 8 -2
+  7. 2 2001 10 0
+  8. 2 2002 10 0
+  9. 2 2003 10 0
+ 10. 2 2004 7 -3
+ 11. 2 2005 7 -3
+ 12. 2 2006 7 -3
+ 13. 3 2001 11 0
+ 14. 3 2002 11 0
+ 15. 3 2003 11 0
+ 16. 3 2004 7 -4
+ 17. 3 2005 7 -4
+ 18. 3 2006 7 -4
+ 19. end
+
+. 
+. whichDIDshouldIuse y g year d, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=y  G=g  T=year  D=d
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    6 periods, calendar 2001 .. 2006
+       (t normalized to 1..   6; never-switcher sentinel =    7)
+Groups dropped for treatment never observed: 0  (3 -> 3)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 3
+  n_switchers          = 3
+  n_never_treated      = 0   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 0
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   =  4 ..  4
+  switch dates (t_cal) = 2004 .. 2004
+  is_binary            = 0   (d in {-4, 0})
+  is_binary01          = 0
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 1   (sd(first_change) = 1)
+  nonneg_dose          = 0   (min dose at the switch = -4)
+  n_stayers            = 0
+  had_d_min            = .   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 0   (groups at the lowest dose)
+  n_above_d_min        = 0   (groups above it)
+  sfsd_pair            = 0   (groups in cells with a usable pair: 0)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 0   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: OTHER
+----------------------------------------------------------------------
+  Your design isn't CLA, SAD, HAD, or SFSD.
+
+  Why each was ruled out:
+   CLA requires: switchers, binary {0,1}, absorbing, no timing
+                 variation, never-treated groups, zero baseline.
+     - failed: treatment not binary {0,1}
+     - failed: no never-treated groups usable at the switch date
+   SAD requires: switchers, binary {0,1}, absorbing, timing variation.
+     - failed: treatment not binary {0,1}
+     - failed: no variation in treatment timing
+   HAD requires: switchers, common switch date, zero baseline,
+                 heterogeneous, non-negative dose at the switch.
+     - failed: some doses at the switch are negative
+   SFSD requires: switchers, and two groups sharing a baseline
+                  treatment value that first switch at different dates.
+     - failed: no two groups share a baseline treatment value while first switc
+> hing at different dates
+----------------------------------------------------------------------
+
+. di as text _n "  r(design)       = " as result "`r(design)'"
+
+  r(design)       = OTHER
+
+. di as text    "  r(had_case)     = " as result "`r(had_case)'" as text "   ex
+> pected empty"
+  r(had_case)     =    expected empty
+
+. di as text    "  r(nonneg_dose)  = " as result r(nonneg_dose)  as text "   ex
+> pected 0"
+  r(nonneg_dose)  = 0   expected 0
+
+. di as text    "  r(had_d_min)    = " as result r(had_d_min)    as text "   ex
+> pected missing"
+  r(had_d_min)    = .   expected missing
+
+. di as text    "  r(n_at_d_min)   = " as result r(n_at_d_min)   as text "   ex
+> pected 0 (missing-d_min guard)"
+  r(n_at_d_min)   = 0   expected 0 (missing-d_min guard)
+
+. di as text    "  r(n_above_d_min)= " as result r(n_above_d_min) as text "   e
+> xpected 0 (missing-d_min guard)"
+  r(n_above_d_min)= 0   expected 0 (missing-d_min guard)
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   CASE D -- two DISTINCT positive doses (control: minimum viable test)
+> 
+>   Doses at the switch: {1, 4, 6, 7, 9}. D_(1) = 1, D_(2) = 4, so
+>   QS = 1/(4-1) = 0.333 and p = 1/(1+QS) = 0.75 -> do not reject -> the null
+>   (quasi-stayers exist) stands -> had_case = "quasi-stayers".
+> 
+>   did_had needs enough groups for lprobust to choose a bandwidth. If this
+>   case fails with a bandwidth error rather than a classification mismatch,
+>   that is a did_had small-sample limit, not a package bug -- the log will
+>   say which.
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "CASE D -- two distinct positive doses (control)"
+CASE D -- two distinct positive doses (control)
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. clear
+
+. input g year y d
+
+             g       year          y          d
+  1. 1 2001 10 0
+  2. 1 2002 10 0
+  3. 1 2003 10 0
+  4. 1 2004 11 1
+  5. 1 2005 11 1
+  6. 1 2006 11 1
+  7. 2 2001 10 0
+  8. 2 2002 10 0
+  9. 2 2003 10 0
+ 10. 2 2004 14 4
+ 11. 2 2005 14 4
+ 12. 2 2006 14 4
+ 13. 3 2001 11 0
+ 14. 3 2002 11 0
+ 15. 3 2003 11 0
+ 16. 3 2004 20 9
+ 17. 3 2005 20 9
+ 18. 3 2006 20 9
+ 19. 4 2001 12 0
+ 20. 4 2002 12 0
+ 21. 4 2003 12 0
+ 22. 4 2004 18 6
+ 23. 4 2005 18 6
+ 24. 4 2006 18 6
+ 25. 5 2001 9 0
+ 26. 5 2002 9 0
+ 27. 5 2003 9 0
+ 28. 5 2004 16 7
+ 29. 5 2005 16 7
+ 30. 5 2006 16 7
+ 31. end
+
+. 
+. di as text _n "--- did_had on its own ---"
+
+--- did_had on its own ---
+
+. capture noisily did_had y g year d, effects(1) graph_off _no_updates
+                 <istmt>:  3301  subscript invalid
+
+. di as text "did_had rc = " as result _rc
+did_had rc = 3301
+
+. capture confirm matrix e(estimates)
+
+. if (_rc == 0) {
+.     matrix ref = e(estimates)
+.     di as text "did_had QS = " as result ref[1,8] as text ", p = " as result 
+> ref[1,9]
+. }
+
+. 
+. di as text _n "--- whichDIDshouldIuse ---"
+
+--- whichDIDshouldIuse ---
+
+. whichDIDshouldIuse y g year d, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=y  G=g  T=year  D=d
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    6 periods, calendar 2001 .. 2006
+       (t normalized to 1..   6; never-switcher sentinel =    7)
+Groups dropped for treatment never observed: 0  (5 -> 5)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 5
+  n_switchers          = 5
+  n_never_treated      = 0   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 0
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   =  4 ..  4
+  switch dates (t_cal) = 2004 .. 2004
+  is_binary            = 0   (d in {0, 9})
+  is_binary01          = 0
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 1   (sd(first_change) = 3.0495901)
+  nonneg_dose          = 1   (min dose at the switch = 1)
+  n_stayers            = 0
+  had_d_min            = 1   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 1   (groups at the lowest dose)
+  n_above_d_min        = 4   (groups above it)
+  sfsd_pair            = 0   (groups in cells with a usable pair: 0)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 0   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=2001); all 5 treated
+  group(s) experience treatment at t=2004, but the size
+  of that change varies across groups.
+
+  Sub-case: undetermined -- no group remains untreated,
+  and the quasi-stayer test could not be run:
+    did_had did not return a QS test (rc = 3301)
+  Estimator: did_had (it runs the quasi-stayer test itself)
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+. di as text _n "  r(design)       = " as result "`r(design)'"
+
+  r(design)       = HAD
+
+. di as text    "  r(had_case)     = " as result "`r(had_case)'" as text "   ex
+> pected quasi-stayers"
+  r(had_case)     = undetermined   expected quasi-stayers
+
+. di as text    "  r(had_tie)      = " as result r(had_tie)      as text "   ex
+> pected 0"
+  r(had_tie)      = 0   expected 0
+
+. di as text    "  r(n_at_d_min)   = " as result r(n_at_d_min)   as text "   ex
+> pected 1 (only g1 at dose 1)"
+  r(n_at_d_min)   = 1   expected 1 (only g1 at dose 1)
+
+. di as text    "  r(n_above_d_min)= " as result r(n_above_d_min) as text "   e
+> xpected 4"
+  r(n_above_d_min)= 4   expected 4
+
+. di as text    "  r(qs_stat)      = " as result r(qs_stat)      as text "   ex
+> pected ~0.333"
+  r(qs_stat)      = .   expected ~0.333
+
+. di as text    "  r(qs_pval)      = " as result r(qs_pval)      as text "   ex
+> pected ~0.75"
+  r(qs_pval)      = .   expected ~0.75
+
+. di as text _n "  Counts are computed but the tie block must NOT print (had_ti
+> e = 0)."
+
+  Counts are computed but the tie block must NOT print (had_tie = 0).
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   CASE E -- two TIED lowest positive doses (control: already handled)
+> 
+>   Doses at the switch: {2, 2, 5, 7}. D_(1) = D_(2) = 2, so had_tie = 1,
+>   did_had is never called, and had_case must be "none" with qs_pval left
+>   missing and qs_reject = 1.
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "CASE E -- two tied lowest positive doses (already handled)"
+CASE E -- two tied lowest positive doses (already handled)
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. clear
+
+. input g year y d
+
+             g       year          y          d
+  1. 1 2001 10 0
+  2. 1 2002 10 0
+  3. 1 2003 10 0
+  4. 1 2004 12 2
+  5. 1 2005 12 2
+  6. 1 2006 12 2
+  7. 2 2001 10 0
+  8. 2 2002 10 0
+  9. 2 2003 10 0
+ 10. 2 2004 12 2
+ 11. 2 2005 12 2
+ 12. 2 2006 12 2
+ 13. 3 2001 11 0
+ 14. 3 2002 11 0
+ 15. 3 2003 11 0
+ 16. 3 2004 18 7
+ 17. 3 2005 18 7
+ 18. 3 2006 18 7
+ 19. 4 2001 12 0
+ 20. 4 2002 12 0
+ 21. 4 2003 12 0
+ 22. 4 2004 17 5
+ 23. 4 2005 17 5
+ 24. 4 2006 17 5
+ 25. end
+
+. 
+. whichDIDshouldIuse y g year d, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=y  G=g  T=year  D=d
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:    6 periods, calendar 2001 .. 2006
+       (t normalized to 1..   6; never-switcher sentinel =    7)
+Groups dropped for treatment never observed: 0  (4 -> 4)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        0
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              0
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     0
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 4
+  n_switchers          = 4
+  n_never_treated      = 0   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 0
+  any_switchers        = 1
+  same_Fg              = 1   (sd(Fg|switchers) = 0)
+  switch periods (t)   =  4 ..  4
+  switch dates (t_cal) = 2004 .. 2004
+  is_binary            = 0   (d in {0, 7})
+  is_binary01          = 0
+  is_absorbing         = 1
+  zero_baseline        = 1   (groups with d_baseline!=0: 0)
+  common_baseline      = 1
+  heterog_dose         = 1   (sd(first_change) = 2.4494898)
+  nonneg_dose          = 1   (min dose at the switch = 2)
+  n_stayers            = 0
+  had_d_min            = 2   (lowest positive dose at the switch)
+  had_tie              = 1
+  n_at_d_min           = 2   (groups at the lowest dose)
+  n_above_d_min        = 2   (groups above it)
+  sfsd_pair            = 0   (groups in cells with a usable pair: 0)
+  n_baseline_cells     = 1
+  n_sfsd_cells         = 0   (cells carrying timing variation)
+  n_post_gap_switchers = 0
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=2001); all 4 treated
+  group(s) experience treatment at t=2004, but the size
+  of that change varies across groups.
+
+  Sub-case: no stayers or quasi-stayers -- the lowest dose
+  is not close to 0.
+    2 groups share the lowest dose (2) and 2 are above it:
+    a mass point, not a quasi-stayer. did_had's QS statistic is
+    undefined here. If that mass point is genuine -- not an artifact
+    of a rounded dose -- the estimand reduces to 2SLS with
+    1(d > 2) as instrument. The smaller of the two counts
+    above is the binding one: a single group on either side makes
+    that instrument weak.
+  WARNING: without stayers or quasi-stayers, WATT is not identified
+  under parallel trends alone. Using the least-treated as controls
+  needs a bounded-heterogeneity assumption (BOUND-HET), which
+  pretrends cannot test, and then identifies only the SIGN of WATT.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+. di as text _n "  r(design)       = " as result "`r(design)'"   as text "   ex
+> pected HAD"
+
+  r(design)       = HAD   expected HAD
+
+. di as text    "  r(had_case)     = " as result "`r(had_case)'" as text "   ex
+> pected none"
+  r(had_case)     = none   expected none
+
+. di as text    "  r(had_tie)      = " as result r(had_tie)      as text "   ex
+> pected 1"
+  r(had_tie)      = 1   expected 1
+
+. di as text    "  r(had_d_min)    = " as result r(had_d_min)    as text "   ex
+> pected 2"
+  r(had_d_min)    = 2   expected 2
+
+. di as text    "  r(n_at_d_min)   = " as result r(n_at_d_min)   as text "   ex
+> pected 2 (g1, g2 at dose 2)"
+  r(n_at_d_min)   = 2   expected 2 (g1, g2 at dose 2)
+
+. di as text    "  r(n_above_d_min)= " as result r(n_above_d_min) as text "   e
+> xpected 2 (g3 at 7, g4 at 5)"
+  r(n_above_d_min)= 2   expected 2 (g3 at 7, g4 at 5)
+
+. di as text    "  r(qs_pval)      = " as result r(qs_pval)      as text "   ex
+> pected missing"
+  r(qs_pval)      = .   expected missing
+
+. di as text    "  r(qs_reject)    = " as result r(qs_reject)    as text "   ex
+> pected 1"
+  r(qs_reject)    = 1   expected 1
+
+. di as text _n "  The report above must print the two counts, not 'two or more
+> '."
+
+  The report above must print the two counts, not 'two or more'.
+
+. 
+. 
+. /*---------------------------------------------------------------------------
+> ---
+>   How to read the log
+> -----------------------------------------------------------------------------
+> -*/
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "CASE A is the one to read closely. Its expected values encode the
+> "
+CASE A is the one to read closely. Its expected values encode the
+
+. di as text "CURRENT behaviour (undetermined), not necessarily the DESIRED one
+> ."
+CURRENT behaviour (undetermined), not necessarily the DESIRED one.
+
+. di as text ""
+
+
+. di as text "If A gives had_case = undetermined with did_had rc = 3301, the"
+If A gives had_case = undetermined with did_had rc = 3301, the
+
+. di as text "uncovered path is confirmed: a single positive dose reaches did_h
+> ad"
+uncovered path is confirmed: a single positive dose reaches did_had
+
+. di as text "and fails there, instead of being intercepted the way had_tie"
+and fails there, instead of being intercepted the way had_tie
+
+. di as text "intercepts the tie. The fix would be a count of distinct positive
+> "
+intercepts the tie. The fix would be a count of distinct positive
+
+. di as text "doses alongside had_tie in section 7b."
+doses alongside had_tie in section 7b.
+
+. di as text ""
+
+
+. di as text "If A does not classify as HAD at all, the path is unreachable in"
+If A does not classify as HAD at all, the path is unreachable in
+
+. di as text "practice and no fix is needed."
+practice and no fix is needed.
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+end of do-file

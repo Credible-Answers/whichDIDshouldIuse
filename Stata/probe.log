@@ -1,0 +1,109 @@
+
+  ___  ____  ____  ____  ____ ®
+ /__    /   ____/   /   ____/      StataNow 19.5
+___/   /   /___/   /   /___/       SE—Standard Edition
+
+ Statistics and Data Science       Copyright 1985-2025 StataCorp LLC
+                                   StataCorp
+                                   4905 Lakeway Drive
+                                   College Station, Texas 77845 USA
+                                   800-782-8272        https://www.stata.com
+                                   979-696-4600        service@stata.com
+
+Stata license: Unlimited-user network, expiring 23 Nov 2026
+Serial number: 401909309093
+  Licensed to: Alberto Trelles
+               Universidad del Pacifico
+
+Notes:
+      1. Stata is running in batch mode.
+      2. Unicode is supported; see help unicode_advice.
+      3. Maximum number of variables is set to 5,000 but can be increased;
+          see help set_maxvar.
+
+. do C:/Users/ALBERT~1/AppData/Local/Temp/probe.do 
+
+. clear all
+
+. set more off
+
+. use "../data/had_data1.dta", clear
+
+. di "=== had_data1 shape ==="
+=== had_data1 shape ===
+
+. distinct g
+
+--------------------------
+   |     total   distinct
+---+----------------------
+ g |     10000       1000
+--------------------------
+
+. di "n_groups above"
+n_groups above
+
+. distinct t
+
+--------------------------
+   |     total   distinct
+---+----------------------
+ t |     10000         10
+--------------------------
+
+. di "n_periods above"
+n_periods above
+
+. sum d, detail
+
+                              d
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            0              0
+ 5%            0              0
+10%            0              0       Obs              10,000
+25%            0              0       Sum of wgt.      10,000
+
+50%     .0001191                      Mean           .2453561
+                        Largest       Std. dev.      .3211938
+75%     .4852856       .9985808
+90%     .7941678       .9985808       Variance       .1031654
+95%     .9000063       .9985808       Skewness       .9612427
+99%     .9754135       .9985808       Kurtosis       2.433675
+
+. di "=== doses at each period ==="
+=== doses at each period ===
+
+. tab t, sum(d)
+
+            |            Summary of d
+          t |        Mean   Std. dev.       Freq.
+------------+------------------------------------
+          1 |           0           0       1,000
+          2 |           0           0       1,000
+          3 |           0           0       1,000
+          4 |           0           0       1,000
+          5 |           0           0       1,000
+          6 |   .49071228   .29325238       1,000
+          7 |   .49071228   .29325238       1,000
+          8 |   .49071228   .29325238       1,000
+          9 |   .49071228   .29325238       1,000
+         10 |   .49071228   .29325238       1,000
+------------+------------------------------------
+      Total |   .24535614   .32119376      10,000
+
+. di "=== how many groups, how many distinct positive doses at the switch ==="
+=== how many groups, how many distinct positive doses at the switch ===
+
+. bys g: egen dmax = max(d)
+
+. bys g: gen first = (_n==1)
+
+. count if first
+  1,000
+
+. di "groups = " r(N)
+groups = 1000
+
+. 
+end of do-file

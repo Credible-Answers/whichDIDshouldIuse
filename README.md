@@ -93,16 +93,91 @@ adjustment that could change the answer is reported rather than silently applied
 | Control that stops being observed | Not applicable — every control is fully observed | Tracked via `end_g` / `Fg_trunc`; the control only counts as a usable never-treated group, or as a usable member of an SFSD pair, while it is still known to be at baseline |
 | `D` missing after a switch | Left missing in both modes; the absorbing check rests on observed `D` only | Same |
 
-Without `, detail`, the default mode still prints one unconditional line, "Groups
-dropped for treatment never observed: …" — groups where `D` is never observed at
-all are dropped in either mode, since there is nothing to classify. With
-`, detail`, it additionally prints a breakdown of every other adjustment (late
-entrants, filled gaps, demotions, controls that exit early, post-switch gaps),
-none of which drop a group — they are why the sample size matches the raw group
-count even though some `D` was missing.
+A default run prints the classification and nothing else. The one exception is a
+"Groups dropped …" line, which appears above the report **when it is nonzero** —
+groups where `D` is never observed at all are dropped in either mode, since there
+is nothing to classify, and losing groups changes your sample. With `, detail`,
+the appendix below the report prints the full accounting including zeros, plus a
+breakdown of every other adjustment (late entrants, filled gaps, demotions,
+controls that exit early, post-switch gaps), none of which drop a group — they
+are why the sample size can match the raw group count even though some `D` was
+missing.
 
 `r(strict)` records which mode ran. `Stata/test_missing.do` (with panels built by
 `Stata/make_synthetic.do`) exercises both modes against known expected results.
+
+#### When the repairs can change the answer
+
+The default mode's repairs keep groups that strict mode would discard, which is
+usually what you want. But a repair is not neutral: **demotion removes a group
+from the switcher pool**, and the classification is decided entirely by which
+groups remain switchers and when they switch. If demotion removes the groups
+carrying the identifying variation, the reported design changes.
+
+A group is demoted when `D` is missing in the period(s) **immediately before**
+its apparent switch (`LDBF_g < Fg - 1`). The exact switch date is then unknown,
+so the group is converted to a control: it keeps its baseline, gets
+`Fg = Tplus1`, and its `D` after `LDBF_g` is discarded so it cannot feed the
+binary or absorbing checks.
+
+Three ways that can move the verdict:
+
+| Starting panel | If demotion removes… | Reported instead |
+|---|---|---|
+| Any design | **every** switcher | `OTHER`, reported as "no switchers" |
+| HAD, varied doses | all switchers whose dose at the switch is above 1, leaving only `D ∈ {0,1}` survivors | `CLA` or `SAD` — the panel now looks binary |
+| SFSD or SAD, several switch dates | all switchers at one of the dates, leaving survivors that share a single date | `CLA` or `HAD` — `same_Fg` flips to 1 |
+
+The all-demoted case is the benign one: the command refuses rather than
+inventing a design, though the message says "no switchers," which is confusing
+when you can see switches in your data. The other two are the dangerous ones —
+a *different design* is reported, with no error, and the reported design is a
+legitimate reading of the surviving groups.
+
+**How to check.** `n_switchers` counts groups that are still switchers *after*
+demotion, so demoted groups are not in it. The share you want is demotions
+against everything that looked like a switcher before the repair:
+
+```stata
+whichDIDshouldIuse Y G T D, detail
+* r(n_demoted) is missing under , strict -- demotion is a default-mode repair
+if !missing(r(n_demoted)) {
+    local looked_like = r(n_switchers) + r(n_demoted)
+    di "demoted: " r(n_demoted) " of " `looked_like' " apparent switchers" ///
+       "  (" %4.1f 100*r(n_demoted)/`looked_like' "%)"
+}
+```
+
+If that share is more than a few percent, treat the classification as
+provisional. Three follow-ups, in order of usefulness:
+
+1. **Re-run with `, strict`.** Strict drops any group with a pre-switch gap
+   instead of demoting it, so the two modes fail differently. If the design is
+   the same both ways, the repairs are not driving it.
+2. **Compare `r(same_Fg)` across the two modes.** A panel that is `same_Fg = 0`
+   under strict but `same_Fg = 1` by default has had its timing variation
+   removed by demotion — the third row of the table above.
+3. **Look at where the gaps are.** Demotion is a statement about your data, not
+   a quirk of the command: `D` is unobserved exactly when these groups were
+   switching. Whether that is benign depends on why it is missing.
+
+**The other adjustments are safer, but not free.** `r(n_filled_pre_gap)` reads a
+gap as baseline when observed values on both sides are at baseline — a real
+assumption, though a mild one. `r(n_exit_controls)` and
+`r(n_truncated_controls)` mark controls that stop being observed; those are
+counted as usable never-treated groups only while still known to be at baseline
+at the earliest switch (`Fg_trunc > first_switch_t`), so a control that expires
+early is excluded from `r(n_never_treated)` rather than silently trusted.
+`r(n_post_gap_switchers)` flags switchers whose `D` is missing afterwards, which
+is why a reversal hidden in a post-switch gap cannot be detected — the report
+says so explicitly for `CLA` and `SAD`.
+
+**Rule of thumb.** The repairs are designed so that a panel is kept whenever its
+first switch date can still be pinned down. When `r(n_demoted)` is zero, none of
+this applies and the default mode's answer is exactly strict mode's answer on a
+larger sample. When it is large, the question is not whether the command is
+right about the surviving groups — it is whether the surviving groups are your
+design.
 
 It classifies; it does **not** estimate. There are no fixed effects, weights, or
 standard-error options, because nothing is being fitted.
@@ -180,10 +255,43 @@ merely share its baseline value on paper. In `, strict` mode every control is
 fully observed, so `Fg_trunc == Fg` everywhere and the test reduces to
 `sd(Fg) > 0` within the cell.
 
-A panel whose baseline cells are all singletons fails SFSD no matter how much
-overall timing variation it has, because no two groups share a baseline to be
-compared. `r(n_baseline_cells)` and `r(n_sfsd_cells)` report how the groups
-partition and how many of those cells actually carry identifying variation.
+`r(n_baseline_cells)` and `r(n_sfsd_cells)` report how the groups partition and
+how many of those cells actually carry identifying variation.
+
+#### When no two groups share a baseline
+
+The pair test above fails outright when every baseline cell is a singleton — and
+that is exactly what a **continuously distributed treatment at period one** looks
+like, since no two groups *can* share a value. Sharing a baseline is not an
+essential condition: the textbook relaxes it in **section 8.3.5.1 (Continuous
+treatment at period one)**, under 8.3.5 Extensions. What remains essential is
+variation in *when* groups first switch.
+
+So after every other design has been ruled out, the command makes one more check:
+if there are switchers and first-switch timing varies (`sd(Fg) > 0` over
+switchers, i.e. `r(same_Fg) = 0`), the design is still **SFSD**, reported with
+`r(sfsd_case) = "continuous-baseline"` and estimated with `did_multiplegt_dyn`'s
+**`continuous()`** option. A panel reaches `OTHER` only if it has no switchers, or
+no timing variation either.
+
+This check runs *after* the main chain, never inside it, so it cannot change the
+answer for a panel that already matched CLA, SAD, HAD or shared-baseline SFSD.
+
+Because the verdict is inferred from all baselines being distinct rather than from
+an observed pair, the report asks you to confirm your period-one treatment really
+is continuous — an ID or group code accidentally passed as `D` produces the same
+all-singleton pattern.
+
+### SFSD sub-case
+
+`r(design)` is `"SFSD"` for both routes, so code comparing against `"SFSD"` needs
+no change. `r(sfsd_case)` says which one:
+
+| `r(sfsd_case)` | When | Estimator |
+|---|---|---|
+| `shared-baseline` | A pair of groups shares a baseline value and first switches at different dates (`r(sfsd_pair) = 1`) | `did_multiplegt_dyn` |
+| `continuous-baseline` | No two groups share a baseline (`r(sfsd_pair) = 0`), but first-switch timing varies — section 8.3.5.1 | `did_multiplegt_dyn` with `continuous()` |
+| *(empty)* | The design is not SFSD | — |
 
 ---
 
@@ -230,6 +338,9 @@ that returns `r()` results wipes it.
 | `r(estimator)` | string | Recommended estimator (empty if `OTHER`) |
 | `r(strict)` | 0/1 | 1 if `, strict` was used, 0 for the default mode |
 
+`"SFSD"` covers two routes — see `r(sfsd_case)` in
+[SFSD sub-case](#sfsd-sub-case) — and `"HAD"` likewise has `r(had_case)`.
+
 ### Sample sizes
 
 | Return | Meaning |
@@ -257,7 +368,7 @@ counters missing; the default mode does the reverse.
 | `r(n_late_entry)` | default | Groups whose baseline is taken at a later entry date |
 | `r(n_missing_at_start)` | default | Groups observed (via `Y`) before `D` is first observed |
 | `r(n_filled_pre_gap)` | default | Groups with a pre-switch gap read as baseline |
-| `r(n_demoted)` | default | Groups demoted to a control because a gap sits right before the apparent switch |
+| `r(n_demoted)` | default | Groups demoted to a control because a gap sits right before the apparent switch. **The one that can change the design** — see [When the repairs can change the answer](#when-the-repairs-can-change-the-answer) |
 | `r(n_exit_controls)` | default | Never-switchers whose `D` stops being observed before the end of the panel |
 | `r(n_post_gap_switchers)` | both | Switchers with `D` missing after their switch (reported, never dropped, in either mode) |
 
@@ -277,7 +388,9 @@ The inputs to the decision; each answers one yes/no question.
 | `r(heterog_dose)` | The size of the first treatment change varies across switchers |
 | `r(sfsd_pair)` | Two groups share a baseline and first switch at different dates |
 
-`r(n_baseline_cells)` and `r(n_sfsd_cells)` accompany `r(sfsd_pair)`.
+`r(n_baseline_cells)` and `r(n_sfsd_cells)` accompany `r(sfsd_pair)`. When
+`r(sfsd_pair) = 0` the design can still be SFSD through the continuous-baseline
+extension — see [SFSD sub-case](#sfsd-sub-case) and `r(sfsd_case)`.
 
 **`is_binary` vs `is_binary01`.** `is_binary` asks "only two values?" — a treatment
 in `{4, 9}` passes. `is_binary01` also requires those values to be 0 and 1. The
@@ -299,6 +412,14 @@ place, whatever it is." Only the strict one drives the branches.
 | `r(nonneg_dose)` | 1 if no switcher's dose at the switch is negative (required for HAD) |
 | `r(had_d_min)` | Lowest positive dose at the switch |
 | `r(had_tie)` | 1 if two or more switchers share that lowest dose |
+| `r(n_at_d_min)` | Switchers at the lowest dose — the comparison arm of the `1(D > d_min)` 2SLS the tie case suggests |
+| `r(n_above_d_min)` | Switchers strictly above it — the treated arm. The smaller of the two arms binds: one group on either side makes that instrument weak |
+
+### SFSD sub-case returns
+
+| Return | Meaning |
+|---|---|
+| `r(sfsd_case)` | `"shared-baseline"`, `"continuous-baseline"`; empty unless the design is SFSD. See [SFSD sub-case](#sfsd-sub-case) |
 | `r(qs_stat)`, `r(qs_pval)`, `r(qs_n)` | `did_had`'s QS statistic, its p-value, and the number of groups it used; missing unless `did_had` was run |
 | `r(qs_reject)` | 1 if quasi-stayers are rejected at 5% (or there is a tie); missing if not assessed |
 

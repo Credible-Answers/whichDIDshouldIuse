@@ -1,0 +1,265 @@
+================================================================================
+  whichDIDshouldIuse -- classification messages
+================================================================================
+  The reports only, as a run WITHOUT the detail option prints them, with the
+  section headers from the tutorial do-file.
+
+  Extracted verbatim from tutorial_1006.log (run of 6 Oct 2026, every call made
+  with , detail). The diagnostics, panel summaries, group-drop accounting and
+  missing-treatment breakdowns that detail adds are omitted here, as are the
+  data-loading and data-generating commands.
+
+  Eleven reports: four textbook panels (1a-1d), the SFSD discrete/continuous
+  pair (2a, 2c), and the four HAD sub-cases (3a-3d, with 3c covering both
+  routes into "none").
+================================================================================
+
+// --------------------------------------------------------------------------- //
+// -- (1) Examples from DID Book                                            -- //
+// --------------------------------------------------------------------------- //
+
+*--- 1a) Moser-Voena - CLA ---*
+*-----------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Classical DID Design (CLA)
+----------------------------------------------------------------------
+  Binary and absorbing treatment, no variation in treatment
+  timing: all 336 treated group(s) experience treatment at
+  t=1919 (period 20), and 6912 group(s) never switch.
+  Estimator: static / event-study TWFE
+  See Chapter 3 of the DID textbook (de Chaisemartin and
+  D'Haultfoeuille).
+----------------------------------------------------------------------
+
+*--- 1b) Wolfers - SAD ---*
+*-------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Staggered Adoption Design (SAD)
+----------------------------------------------------------------------
+  Binary and absorbing treatment, with variation in treatment
+  timing across the 29 switching group(s): first switches
+  occur between t=1969 and t=1985.
+  Estimator: csdid, did_multiplegt_dyn, or did2s
+  See Chapter 6 of the DID textbook.
+----------------------------------------------------------------------
+
+*--- 1c) Gentzkow et. al - SFSD ---*
+*----------------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  The panel is not CLA, SAD or HAD, but it does satisfy the
+  staggered first-switch condition: some groups share the same
+  baseline treatment while first switching at different dates.
+  First switches occur between t=1872 and t=1928.
+
+  SFSD is the broadest design tested here. Unlike CLA/SAD it
+  permits NON-ABSORBING treatment (a group may switch more than
+  once, including back to its baseline), and unlike HAD it permits
+  HETEROGENEOUS baseline doses.
+
+  Identifying variation: 8 of 13 baseline cell(s) contain
+  groups that first switch at different dates.
+  Estimator: did_multiplegt_dyn
+  See Chapter 8 of the DID textbook.
+----------------------------------------------------------------------
+
+*--- 1d) Pierce and Schott - HAD(QS) ---*
+*---------------------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=1997); all 103 treated
+  group(s) experience treatment at t=2001, but the size
+  of that change varies across groups.
+
+  Sub-case: quasi-stayers -- no group remains untreated,
+  but did_had's test does not reject that some doses are close to 0:
+    QS =  6.150, p = 0.140  (N = 103, reject at 5% if QS > 19)
+  WATT is identified, using the quasi-stayers as controls; it is
+  estimated at a slower rate, with bias-corrected CIs.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+// --------------------------------------------------------------------------- //
+// -- (2) SFSD: discrete vs. continuous treatment                           -- //
+// --------------------------------------------------------------------------- //
+
+*--- 2a) Gentzkow et. al - SFSD ---*
+*----------------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  The panel is not CLA, SAD or HAD, but it does satisfy the
+  staggered first-switch condition: some groups share the same
+  baseline treatment while first switching at different dates.
+  First switches occur between t=1872 and t=1928.
+
+  SFSD is the broadest design tested here. Unlike CLA/SAD it
+  permits NON-ABSORBING treatment (a group may switch more than
+  once, including back to its baseline), and unlike HAD it permits
+  HETEROGENEOUS baseline doses.
+
+  Identifying variation: 8 of 13 baseline cell(s) contain
+  groups that first switch at different dates.
+  Estimator: did_multiplegt_dyn
+  See Chapter 8 of the DID textbook.
+----------------------------------------------------------------------
+
+*--- 2c) Gentzkow contiuous ---*
+*------------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  Reached through the CONTINUOUS BASELINE TREATMENT extension.
+
+  No two groups share the same baseline treatment: all 1195 baseline
+  cell(s) are singletons, one per group. That is the signature of a
+  CONTINUOUSLY DISTRIBUTED treatment at period one, not a defect --
+  with d_baseline continuous, no two groups CAN share a value.
+
+  The usual SFSD condition asks for a pair of groups sharing a
+  baseline that first switch at different dates. The first half of
+  that is not essential, and is relaxed in section 8.3.5.1. What
+  is essential -- variation in WHEN groups first switch -- holds
+  here: sd(Fg) over switchers = 3.3181889, with the 1195 switcher(s)
+  first switching between t=1868 and t=1920.
+
+  Estimator: did_multiplegt_dyn, with the continuous() option
+  The continuous() option is REQUIRED for this design. Without it
+  did_multiplegt_dyn looks for same-baseline comparison groups that
+  a continuous period-one treatment does not provide.
+
+  CHECK THIS: the verdict is inferred from every baseline value
+  being distinct, not from a shared-baseline pair. Confirm your D
+  at period one really is continuous -- an ID or a group code passed
+  as D would look exactly the same way.
+  See Chapter 8 of the DID textbook, section 8.3.5.1 (Continuous
+  treatment at period one), in 8.3.5 Extensions.
+----------------------------------------------------------------------
+
+// --------------------------------------------------------------------------- //
+// -- (3) HAD subcases                                                      -- //
+// --------------------------------------------------------------------------- //
+
+*--- 3a) Stayers ---*
+*-------------------* 
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=   1); all 990 treated
+  group(s) experience treatment at t=   6, but the size
+  of that change varies across groups.
+
+  Sub-case: stayers -- 10 group(s) remain untreated at the switch.
+  ATT and WATT are identified under no-anticipation and parallel
+  trends, and estimable at the usual sqrt(G) rate.
+  Estimator: WATT by ivregress 2sls dY (d = 1(d>0));
+             ATT and WATT by did_multiplegt_stat.
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+*--- 3b) Quasi-stayers ---*
+*-------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=   1); all 1000 treated
+  group(s) experience treatment at t=   6, but the size
+  of that change varies across groups.
+
+  Sub-case: quasi-stayers -- no group remains untreated,
+  but did_had's test does not reject that some doses are close to 0:
+    QS =  3.962, p = 0.202  (N = 1000, reject at 5% if QS > 19)
+  WATT is identified, using the quasi-stayers as controls; it is
+  estimated at a slower rate, with bias-corrected CIs.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+*--- 3c) No stayers or QS ---*
+*----------------------------*
+
+*I. Mass point 
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=2001); all 6 treated
+  group(s) experience treatment at t=2004, but the size
+  of that change varies across groups.
+
+  Sub-case: no stayers or quasi-stayers -- the lowest dose
+  is not close to 0.
+    3 groups share the lowest dose (2) and 3 are above it:
+    a mass point, not a quasi-stayer. did_had's QS statistic is
+    undefined here. If that mass point is genuine -- not an artifact
+    of a rounded dose -- the estimand reduces to 2SLS with
+    1(d > 2) as instrument. The smaller of the two counts
+    above is the binding one: a single group on either side makes
+    that instrument weak.
+  WARNING: without stayers or quasi-stayers, WATT is not identified
+  under parallel trends alone. Using the least-treated as controls
+  needs a bounded-heterogeneity assumption (BOUND-HET), which
+  pretrends cannot test, and then identifies only the SIGN of WATT.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+*II. QS null rejected 
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=   1); all 1000 treated
+  group(s) experience treatment at t=   6, but the size
+  of that change varies across groups.
+
+  Sub-case: no stayers or quasi-stayers -- the lowest dose
+  is not close to 0.
+    QS = 20.000, p = 0.048  (N = 1000, reject at 5% if QS > 19)
+  WARNING: without stayers or quasi-stayers, WATT is not identified
+  under parallel trends alone. Using the least-treated as controls
+  needs a bounded-heterogeneity assumption (BOUND-HET), which
+  pretrends cannot test, and then identifies only the SIGN of WATT.
+  Estimator: did_had
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+*--- 3d) Undetermined ---*
+*------------------------*
+
+----------------------------------------------------------------------
+  DESIGN: Heterogeneous Adoption Design (HAD)
+----------------------------------------------------------------------
+  All groups untreated at baseline (t=   1); all 3 treated
+  group(s) experience treatment at t=   3, but the size
+  of that change varies across groups.
+
+  Sub-case: undetermined -- no group remains untreated,
+  and the quasi-stayer test could not be run:
+    did_had did not return a QS test (rc = 3301)
+  Estimator: did_had (it runs the quasi-stayer test itself)
+  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026).
+----------------------------------------------------------------------
+
+*Remark: These are cases where the did_had returns an error or cannot run. Some possible cases are the following:
+*   (i)   the panel is too small for did_had's nonparametric step. It calls lprobust 
+*         to fit a local polynomial in the dose, and with few groups the fit has too 
+*         few points, so QS = D(1)/(D(2)-D(1)) subscripts a vector with fewer than two 
+*         positive doses -> r(3301). That is this example: 3 groups.
+*   (ii)  did_had, lprobust or gtools is not installed
+*   (iii) Stata is older than version 16, since did_had calls preserve and must run in
+*         a separate frame
+*   (iv)  did_had exits without leaving e(estimates), which it does silently on some
+*         failures (rc = 0)
+*
+*In every case the design is still HAD: only the sub-case is unknown. r(had_why) says 
+*which of the above happened, and the package never errors out.
