@@ -48,7 +48,7 @@ di "did_had p            = " ref[1,9]
 di "whichDIDshouldIuse p = " r(qs_pval)
 
 *------------------------------* 
-*--- Data2 from HAD package ---*
+*--- Data2 from HAD package ---*   STAYERS
 *------------------------------* 
 
 use "../data/had_data2.dta", clear

@@ -1,0 +1,251 @@
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\ALBERTO TRELLES\Dropbox\5_Research\predoc\github_credible-answers\whichDIDshouldIuse\Stata\test_sfsd_continuous_fail.log
+  log type:  text
+ opened on:   6 Oct 2026, 11:02:11
+
+. 
+. 
+. /*------------------------------------------------------------------------------
+>   BLOCK 1 -- raw numdailies (control)
+> ------------------------------------------------------------------------------*/
+. 
+. di as text _n "{hline 78}"
+
+------------------------------------------------------------------------------
+
+. di as text "BLOCK 1 -- Gentzkow et al., raw numdailies (control)"
+BLOCK 1 -- Gentzkow et al., raw numdailies (control)
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. use "../data/gentzkowetal_didtextbook.dta", clear
+
+. 
+. * whichDIDshouldIuse  Y        G      T    D
+. whichDIDshouldIuse prestout cnty90 year numdailies, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=prestout  G=cnty90  T=year  D=numdailies
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:   16 periods, calendar 1868 .. 1928
+       (t normalized to 1..  16; never-switcher sentinel =   17)
+Groups dropped for treatment never observed: 0  (1195 -> 1195)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        456
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              13
+  gap right before switch, demoted to control:   12
+  controls leaving the panel early:              1
+  switchers with d missing after the switch:     25
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 1195
+  n_switchers          = 1149
+  n_never_treated      = 46   (usable at the earliest switch)
+  n_truncated_controls = 13
+  never_treated_groups = 1
+  any_switchers        = 1
+  same_Fg              = 0   (sd(Fg|switchers) = 3.9039896)
+  switch periods (t)   =  2 .. 16
+  switch dates (t_cal) = 1872 .. 1928
+  is_binary            = 0   (d in {0, 45})
+  is_binary01          = 0
+  is_absorbing         = 0
+  zero_baseline        = 0   (groups with d_baseline!=0: 291)
+  common_baseline      = 0
+  heterog_dose         = 1   (sd(first_change) = .84308857)
+  nonneg_dose          = 1   (min dose at the switch = 0)
+  n_stayers            = 46
+  had_d_min            = 1   (lowest positive dose at the switch)
+  had_tie              = 1
+  n_at_d_min           = 758   (groups at the lowest dose)
+  n_above_d_min        = 364   (groups above it)
+  sfsd_pair            = 1   (groups in cells with a usable pair: 1190)
+  n_baseline_cells     = 13
+  n_sfsd_cells         = 8   (cells carrying timing variation)
+  n_post_gap_switchers = 25
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: Staggered First-Switch Design (SFSD)
+----------------------------------------------------------------------
+  The panel is not CLA, SAD or HAD, but it does satisfy the
+  staggered first-switch condition: some groups share the same
+  baseline treatment while first switching at different dates.
+  First switches occur between t=1872 and t=1928.
+
+  SFSD is the broadest design tested here. Unlike CLA/SAD it
+  permits NON-ABSORBING treatment (a group may switch more than
+  once, including back to its baseline), and unlike HAD it permits
+  HETEROGENEOUS baseline doses.
+
+  Identifying variation: 8 of 13 baseline cell(s) contain
+  groups that first switch at different dates.
+  Estimator: did_multiplegt_dyn
+  See Chapter 8 of the DID textbook.
+----------------------------------------------------------------------
+
+. 
+. 
+. /*------------------------------------------------------------------------------
+>   BLOCK 2 -- continuous baseline
+> 
+>   Same panel, same Fg's, continuous d_baseline.
+> ------------------------------------------------------------------------------*/
+. 
+. di as text _n(2) "{hline 78}"
+
+
+------------------------------------------------------------------------------
+
+. di as text "BLOCK 2 -- same panel, baseline made continuously distributed"
+BLOCK 2 -- same panel, baseline made continuously distributed
+
+. di as text "{hline 78}"
+------------------------------------------------------------------------------
+
+. 
+. * County-constant shift in [0,1). numdailies is an integer count, so a shifted
+. * baseline stays inside its own unit interval and cannot collide with a county
+. * that had a different raw baseline. double storage keeps the values distinct.
+. set seed 90210
+
+. bys cnty90: gen byte first_g = (_n == 1)        
+
+. gen double u = runiform() if first_g
+(15,677 missing values generated)
+
+. bys cnty90: egen double u_g = max(u)
+
+. gen double d_cont = numdailies + u_g    //add a continuous variable u ~ U(0,1)
+
+. 
+. * Show the baseline really is all-distinct: one value per county.
+. di as text _n "--- is the baseline continuous? ---"
+
+--- is the baseline continuous? ---
+
+. di as text "  distinct counties:"
+  distinct counties:
+
+. distinct cnty90
+
+-------------------------------
+        |     total   distinct
+--------+----------------------
+ cnty90 |     16872       1195
+-------------------------------
+
+. di as text "  distinct baseline values at the first period of each county:"
+  distinct baseline values at the first period of each county:
+
+. distinct d_cont if first_g
+
+-------------------------------
+        |     total   distinct
+--------+----------------------
+ d_cont |      1195       1195
+-------------------------------
+
+. di as text "  (the two counts should match: every county its own baseline)"
+  (the two counts should match: every county its own baseline)
+
+. 
+. di as text _n "--- whichDIDshouldIuse on the continuous baseline ---"
+
+--- whichDIDshouldIuse on the continuous baseline ---
+
+. whichDIDshouldIuse prestout cnty90 year d_cont, detail
+
+----------------------------------------------------------------------
+  whichDIDshouldIuse:  Y=prestout  G=cnty90  T=year  D=d_cont
+  missing treatment: default (less strict)
+----------------------------------------------------------------------
+
+Panel:   16 periods, calendar 1868 .. 1928
+       (t normalized to 1..  16; never-switcher sentinel =   17)
+Groups dropped for treatment never observed: 0  (1195 -> 1195)
+Missing treatment (default rules; use , strict to drop instead):
+  late entrants, baseline taken at entry:        456
+  d missing at start, baseline taken later:      0
+  pre-switch gaps read as baseline:              49
+  gap right before switch, demoted to control:   0
+  controls leaving the panel early:              0
+  switchers with d missing after the switch:     49
+
+----------------------------------------------------------------------
+  DIAGNOSTICS
+----------------------------------------------------------------------
+  n_groups             = 1195
+  n_switchers          = 1195
+  n_never_treated      = 0   (usable at the earliest switch)
+  n_truncated_controls = 0
+  never_treated_groups = 0
+  any_switchers        = 1
+  same_Fg              = 0   (sd(Fg|switchers) = 3.3181889)
+  switch periods (t)   =  1 .. 14
+  switch dates (t_cal) = 1868 .. 1920
+  is_binary            = 0   (d in {.00023898, 45.394099})
+  is_binary01          = 0
+  is_absorbing         = 0
+  zero_baseline        = 0   (groups with d_baseline!=0: 1195)
+  common_baseline      = 0
+  heterog_dose         = 0   (sd(first_change) = 0)
+  nonneg_dose          = 1   (min dose at the switch = .00023898)
+  n_stayers            = 0
+  had_d_min            = .00023898   (lowest positive dose at the switch)
+  had_tie              = 0
+  n_at_d_min           = 1   (groups at the lowest dose)
+  n_above_d_min        = 1194   (groups above it)
+  sfsd_pair            = 0   (groups in cells with a usable pair: 0)
+  n_baseline_cells     = 1195
+  n_sfsd_cells         = 0   (cells carrying timing variation)
+  n_post_gap_switchers = 49
+----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+  DESIGN: OTHER
+----------------------------------------------------------------------
+  Your design isn't CLA, SAD, HAD, or SFSD.
+
+  Why each was ruled out:
+   CLA requires: switchers, binary {0,1}, absorbing, no timing
+                 variation, never-treated groups, zero baseline.
+     - failed: treatment not binary {0,1}
+     - failed: treatment not absorbing
+     - failed: treatment timing varies
+     - failed: no never-treated groups usable at the switch date
+     - failed: baseline treatment not 0 for all groups
+   SAD requires: switchers, binary {0,1}, absorbing, timing variation.
+     - failed: treatment not binary {0,1}
+     - failed: treatment not absorbing
+   HAD requires: switchers, common switch date, zero baseline,
+                 heterogeneous, non-negative dose at the switch.
+     - failed: switch dates differ across groups
+     - failed: baseline treatment not 0 for all groups
+     - failed: size of first change does not vary
+   SFSD requires: switchers, and two groups sharing a baseline
+                  treatment value that first switch at different dates.
+     - failed: no two groups share a baseline treatment value while first switching at different dates
+----------------------------------------------------------------------
+
+. 
+. *they don't all switch at the same time bc the same u ~ U(0,1) is being added to each treatment within each group. So if D1 = D2 for some group g, that group hasn't yet switched
+. 
+. 
+. 
+. 
+. 
+. 
+end of do-file
+
+. do "C:\Users\ALBERT~1\AppData\Local\Temp\STD2b9c_000002.tmp"
+
+. cap log close

@@ -40,21 +40,15 @@ set more off
 
 use "../data/moser_voena_didtextbook.dta", clear
 
-* Default output: the dropped-group warnings and the classification only.
+
 * whichDIDshouldIuse  Y        G         T      D
 whichDIDshouldIuse    patents  subclass  year   twea
 
-* The same panel with full diagnostics, as the other three blocks use. The
-* r() echoes below read THIS call.
-whichDIDshouldIuse    patents  subclass  year   twea, detail
+*Detail option 
+whichDIDshouldIuse    patents  subclass  year   twea, detail 
 
 di as text _n "r(design)    = " as result r(design)
 di as text    "r(estimator) = " as result r(estimator)
-
-di as text _n "SFSD diagnostics:"
-di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
-di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
-di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
@@ -68,11 +62,6 @@ whichDIDshouldIuse div_rate state year udl, detail
 
 di as text _n "r(design)    = " as result r(design)
 di as text    "r(estimator) = " as result r(estimator)
-
-di as text _n "SFSD diagnostics:"
-di as text    "  r(sfsd_pair)        = " as result r(sfsd_pair)
-di as text    "  r(n_baseline_cells) = " as result r(n_baseline_cells)
-di as text    "  r(n_sfsd_cells)     = " as result r(n_sfsd_cells)
 
 
 /*==============================================================================
