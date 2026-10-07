@@ -1,4 +1,4 @@
-*! whichDIDshouldIuse 0.3  02oct2026
+*! whichDIDshouldIuse 0.5  06oct2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with a less strict
 *! default for missing treatment and a strict option.
 
