@@ -1,49 +1,71 @@
 # whichDIDshouldIuse
 
-A Stata command that looks at a panel and tells you which difference-in-differences
-**design** it is, as well as estimator candidates.
+[![Stata](https://img.shields.io/badge/Stata-16%2B-blue)](https://www.stata.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-You pass it four variables; it reports one of **CLA**, **SAD**, **HAD**, **SFSD**,
-or **OTHER**, together with the diagnostics behind that answer.
+**Tell me which difference-in-differences design my panel is, and which estimator to use.**
+
+You pass four variables; the command reports one of **CLA**, **SAD**, **HAD**, **SFSD**
+or **OTHER**, names a suitable estimator, and points you at the relevant chapter of
+de Chaisemartin & D'Haultfœuille's DID textbook.
+
+It classifies; it does **not** estimate. There are no fixed effects, weights or
+standard-error options, because nothing is being fitted.
+
+Stata 14 and 15 run everything except the HAD quasi-stayer sub-case, which needs frames;
+below 16 those panels are still classified as HAD, with `r(had_case) = "undetermined"`.
 
 ```stata
-adopath + "Stata"
-use "data/moser_voena_didtextbook.dta", clear
+use "moser_voena.dta", clear
 whichDIDshouldIuse patents subclass year twea
 ```
 
 ```
-Groups dropped for treatment never observed: 0  (7248 -> 7248)
-
 ----------------------------------------------------------------------
   DESIGN: Classical DID Design (CLA)
 ----------------------------------------------------------------------
   Binary and absorbing treatment, no variation in treatment
   timing: all 336 treated group(s) experience treatment at
   t=1919 (period 20), and 6912 group(s) never switch.
+
   Estimator: static / event-study TWFE
+
   See Chapter 3 of the DID textbook (de Chaisemartin and
   D'Haultfoeuille).
 ----------------------------------------------------------------------
 ```
 
-Add `, detail` to also see the panel summary, the missing-treatment breakdown (default
-mode), and the full diagnostics table.
-
-Design definitions follow **de Chaisemartin & D'Haultfœuille**.
-
 ---
 
-## Repository layout
+## Installation
 
-| Path | What it is |
-|---|---|
-| **`Stata/whichDIDshouldIuse.ado`** | The command. All classification logic lives here and nowhere else. |
-| **`Stata/examples.do`** | The driver: runs `whichDIDshouldIuse` on the four panels in `data/` and prints the result of each. |
-| **`Stata/test_had.do`** | Tests the HAD sub-cases on synthetic panels with known QS values. |
-| **`Stata/test_missing.do`** | Tests both missing-treatment modes (`strict` and default) against known expected results. |
-| **`Stata/make_synthetic.do`** | Builds the panels `test_missing.do` runs against, written to `data/synthetic/`. |
-| **`data/`** | Four example panels from the textbook (Moser–Voena, Wolfers, Gentzkow et al., Pierce–Schott). |
+```stata
+net install whichDIDshouldIuse, ///
+    from("https://raw.githubusercontent.com/Credible-Answers/whichDIDshouldIuse/main/Stata")
+```
+
+Add `, replace` to upgrade an existing install.
+
+**Dependency:** `distinct` (SSC). HAD panels without stayers additionally use `did_had`,
+`lprobust` (in `nprobust`) and `gtools`. You do not need to install any of these
+yourself — the command installs what is missing on first use.
+
+<details>
+<summary>Alternative: clone the repository (for development)</summary>
+
+```bash
+git clone https://github.com/Credible-Answers/whichDIDshouldIuse.git
+```
+
+```stata
+adopath + "whichDIDshouldIuse/Stata"
+```
+
+When editing the `.ado`, run `discard` first. Stata caches `.ado` programs in memory,
+so otherwise an edit is silently ignored and you get results from the stale version —
+no error, no warning.
+
+</details>
 
 ---
 
@@ -60,275 +82,134 @@ whichDIDshouldIuse Y G T D [, detail strict]
 | `T` | **Calendar** time (year, quarter, …) |
 | `D` | Treatment |
 
-All four variables are positional and required, in that order. You pass **your own
-variable names** — no pre-renaming needed. The command runs inside
-`preserve`/`restore`, so your data in memory is unchanged when it finishes.
+All four are positional and required, in that order. You pass **your own variable
+names** — no pre-renaming needed. The command runs inside `preserve`/`restore`, so your
+data in memory is unchanged when it finishes.
 
 | Option | Effect |
 |---|---|
-| `detail` | Also print the input echo, the panel summary, the missing-treatment breakdown (default mode only), and the full `DIAGNOSTICS` block. |
-| `strict` | Handle missing treatment by dropping groups instead of applying the default rules below. |
+| `detail` | Also print the input echo, the panel summary, the missing-treatment breakdown and the full `DIAGNOSTICS` block. |
+| `strict` | Drop groups with missing treatment instead of applying the default repairs. |
 
-By default you get the classification and nothing else — bar one dropped-group
-line (what it reports depends on the mode, see below), which is **never**
-suppressed. That line reports groups discarded from your sample, which is a
-warning rather than a diagnostic: a run that silently loses 400 groups must not
-look like one that loses none.
+By default you get the classification and nothing else — bar a dropped-group line, which
+is **never** suppressed. That line reports groups discarded from your sample: a run that
+silently loses 400 groups must not look like one that loses none.
 
-`detail` controls **display only**. Every `r()` return is set either way, so you
-never need it to get at a result — see [Returned values](#returned-values).
-
-### Two modes for missing treatment
-
-`D` missing somewhere other than a group's baseline period used to mean the group
-was dropped outright. That is still available as `, strict`. The **default**
-(no option) is less strict, modeled on how `did_multiplegt_dyn` treats gaps: a
-group is kept whenever its first switch date can still be pinned down, and every
-adjustment that could change the answer is reported rather than silently applied.
-
-| | `strict` | default |
-|---|---|---|
-| Baseline (`d_baseline`) | `D` at `t == 1`, literally; missing there drops the group | `D` at the first period it is observed (entry may be later than `t == 1`) |
-| `D` missing before the switch | Drops the group | Read as baseline if it falls between two baseline observations; if the gap sits right before the switch, the group is **demoted** to a control (the exact switch date is unknown) |
-| Control that stops being observed | Not applicable — every control is fully observed | Tracked via `end_g` / `Fg_trunc`; the control only counts as a usable never-treated group, or as a usable member of an SFSD pair, while it is still known to be at baseline |
-| `D` missing after a switch | Left missing in both modes; the absorbing check rests on observed `D` only | Same |
-
-A default run prints the classification and nothing else. The one exception is a
-"Groups dropped …" line, which appears above the report **when it is nonzero** —
-groups where `D` is never observed at all are dropped in either mode, since there
-is nothing to classify, and losing groups changes your sample. With `, detail`,
-the appendix below the report prints the full accounting including zeros, plus a
-breakdown of every other adjustment (late entrants, filled gaps, demotions,
-controls that exit early, post-switch gaps), none of which drop a group — they
-are why the sample size can match the raw group count even though some `D` was
-missing.
-
-`r(strict)` records which mode ran. `Stata/test_missing.do` (with panels built by
-`Stata/make_synthetic.do`) exercises both modes against known expected results.
-
-#### When the repairs can change the answer
-
-The default mode's repairs keep groups that strict mode would discard, which is
-usually what you want. But a repair is not neutral: **demotion removes a group
-from the switcher pool**, and the classification is decided entirely by which
-groups remain switchers and when they switch. If demotion removes the groups
-carrying the identifying variation, the reported design changes.
-
-A group is demoted when `D` is missing in the period(s) **immediately before**
-its apparent switch (`LDBF_g < Fg - 1`). The exact switch date is then unknown,
-so the group is converted to a control: it keeps its baseline, gets
-`Fg = Tplus1`, and its `D` after `LDBF_g` is discarded so it cannot feed the
-binary or absorbing checks.
-
-Three ways that can move the verdict:
-
-| Starting panel | If demotion removes… | Reported instead |
-|---|---|---|
-| Any design | **every** switcher | `OTHER`, reported as "no switchers" |
-| HAD, varied doses | all switchers whose dose at the switch is above 1, leaving only `D ∈ {0,1}` survivors | `CLA` or `SAD` — the panel now looks binary |
-| SFSD or SAD, several switch dates | all switchers at one of the dates, leaving survivors that share a single date | `CLA` or `HAD` — `same_Fg` flips to 1 |
-
-The all-demoted case is the benign one: the command refuses rather than
-inventing a design, though the message says "no switchers," which is confusing
-when you can see switches in your data. The other two are the dangerous ones —
-a *different design* is reported, with no error, and the reported design is a
-legitimate reading of the surviving groups.
-
-**How to check.** `n_switchers` counts groups that are still switchers *after*
-demotion, so demoted groups are not in it. The share you want is demotions
-against everything that looked like a switcher before the repair:
-
-```stata
-whichDIDshouldIuse Y G T D, detail
-* r(n_demoted) is missing under , strict -- demotion is a default-mode repair
-if !missing(r(n_demoted)) {
-    local looked_like = r(n_switchers) + r(n_demoted)
-    di "demoted: " r(n_demoted) " of " `looked_like' " apparent switchers" ///
-       "  (" %4.1f 100*r(n_demoted)/`looked_like' "%)"
-}
-```
-
-If that share is more than a few percent, treat the classification as
-provisional. Three follow-ups, in order of usefulness:
-
-1. **Re-run with `, strict`.** Strict drops any group with a pre-switch gap
-   instead of demoting it, so the two modes fail differently. If the design is
-   the same both ways, the repairs are not driving it.
-2. **Compare `r(same_Fg)` across the two modes.** A panel that is `same_Fg = 0`
-   under strict but `same_Fg = 1` by default has had its timing variation
-   removed by demotion — the third row of the table above.
-3. **Look at where the gaps are.** Demotion is a statement about your data, not
-   a quirk of the command: `D` is unobserved exactly when these groups were
-   switching. Whether that is benign depends on why it is missing.
-
-**The other adjustments are safer, but not free.** `r(n_filled_pre_gap)` reads a
-gap as baseline when observed values on both sides are at baseline — a real
-assumption, though a mild one. `r(n_exit_controls)` and
-`r(n_truncated_controls)` mark controls that stop being observed; those are
-counted as usable never-treated groups only while still known to be at baseline
-at the earliest switch (`Fg_trunc > first_switch_t`), so a control that expires
-early is excluded from `r(n_never_treated)` rather than silently trusted.
-`r(n_post_gap_switchers)` flags switchers whose `D` is missing afterwards, which
-is why a reversal hidden in a post-switch gap cannot be detected — the report
-says so explicitly for `CLA` and `SAD`.
-
-**Rule of thumb.** The repairs are designed so that a panel is kept whenever its
-first switch date can still be pinned down. When `r(n_demoted)` is zero, none of
-this applies and the default mode's answer is exactly strict mode's answer on a
-larger sample. When it is large, the question is not whether the command is
-right about the surviving groups — it is whether the surviving groups are your
-design.
-
-It classifies; it does **not** estimate. There are no fixed effects, weights, or
-standard-error options, because nothing is being fitted.
-
-**Dependency:** `distinct` (SSC) — `ssc install distinct`
-
-For HAD panels **without stayers**, the sub-case also needs `did_had` (SSC), which
-itself needs `lprobust` (`net install nprobust, from(https://raw.githubusercontent.com/nppackages/nprobust/master/stata)`)
-and `gtools` (SSC), plus Stata 16 or later. Without them the design is still
-reported as HAD, with `r(had_case) = "undetermined"`.
-
-### Finding the command
-
-`whichDIDshouldIuse.ado` sits in `Stata/`, so add that folder to the search path:
-
-```stata
-adopath + "Stata"
-```
-
-While editing the `.ado`, also run `discard` first. Stata **caches** `.ado`
-programs in memory, so without it an edit is silently ignored and you get results
-from the stale version — no error, no warning.
+`detail` controls **display only**. Every `r()` return is set either way.
 
 ---
 
 ## The designs
 
-Ordered from most to least restrictive. They **nest**: CLA ⊂ SAD ⊂ HAD-SQS ⊂ SFSD.
-Conditions are checked most-restrictive-first, so you get the tightest design that
-holds.
+They **nest** — CLA ⊂ SAD ⊂ HAD-SQS ⊂ SFSD — and are checked most-restrictive-first, so
+you get the tightest design that holds.
 
-| Design | In words | Estimator |
-|---|---|---|
-| **CLA** | Binary 0/1, absorbing, everyone switches on the same date, never-treated controls exist, everyone starts untreated | static / event-study TWFE |
-| **SAD** | As CLA, but switch dates **vary** across groups | `csdid`, `did_multiplegt_dyn`, `did2s` |
-| **HAD** | One common switch date, everyone starts untreated, and the **size** of the change differs and is non-negative (a dose, not an on/off switch) | depends on the sub-case, below |
-| **SFSD** | Broadest tested. Permits **non-absorbing** treatment (switching back off) and **heterogeneous baseline** doses | `did_multiplegt_dyn` |
-| **OTHER** | None of the above. The output lists, condition by condition, exactly which checks failed for each design. | — |
+| Design | In words | Estimator | Chapter |
+|---|---|---|---|
+| **CLA** | Binary 0/1, absorbing, everyone switches on the same date, never-treated controls exist, everyone starts untreated | static / event-study TWFE | 3 |
+| **SAD** | As CLA, but switch dates **vary** across groups | `csdid`, `did_multiplegt_dyn`, `did2s` | 6 |
+| **HAD** | Everyone starts untreated and switches on the **same** date, but the **dose** varies | `did_had`, `did_multiplegt_stat` | 7 |
+| **SFSD** | Groups share a baseline treatment and first switch at **different** dates. Allows non-absorbing treatment and heterogeneous baseline doses | `did_multiplegt_dyn` | 8 |
+| **OTHER** | None of the above | — | 8.5.2 |
 
 ### HAD sub-cases
 
-Inside HAD, what you can estimate depends on which control group exists at the
-common switch date (Chapter 7; de Chaisemartin et al. 2026). `r(had_case)` says which:
+When the design is HAD, `r(had_case)` says which control group exists at the common
+switch date — which decides what is identified:
 
-| `r(had_case)` | When | What is identified | Estimator |
-|---|---|---|---|
-| `stayers` | Some groups stay at `D = 0` at the switch | CAS, ATT, WATT at the usual √G rate | `ivregress 2sls Δy (d = 1(d>0))`; `did_multiplegt_stat` |
-| `quasi-stayers` | No stayers, and `did_had`'s quasi-untreated test does **not** reject at 5% | WATT, at a slower rate, bias-corrected CIs | `did_had` |
-| `none` | No stayers, and the test rejects — or the two lowest doses tie (a mass point at the lowest dose) | Only the **sign** of WATT, and only under BOUND-HET, which pretrends cannot test | `did_had` |
-| `undetermined` | No stayers, and `did_had` could not be run (not installed, Stata < 16, or it failed on the data) | — | `did_had` (it runs the test itself) |
-
-The quasi-stayer test is **`did_had`'s own**, not a re-implementation. The command
-runs `did_had y g t d, effects(1) graph_off` on the switchers and reads the test
-from `e(estimates)`: `QS = D(1) / (D(2) − D(1))` over the doses at the switch, with
-p-value `1/(1+QS)`, so it rejects when `QS > 19`. With stayers no test is needed,
-and with a tie the statistic is undefined, so `did_had` is not called in either case.
-
-### What makes SFSD different
-
-SFSD asks whether there exist two groups `g ≠ g'` with the **same baseline
-treatment** that **first switch at different dates**. That is a *pair-existence*
-test, not a variance test — timing variation **within** a shared-baseline cell.
-Per `d_baseline` cell, the test is:
-
-```
-min(Fg over switchers in the cell)  <  max(Fg_trunc over all groups in the cell)
-```
-
-`Fg_trunc` truncates a control's switch date to the last period it is still
-*known* to be at baseline (`Fg_trunc = Fg` for switchers and for fully observed
-controls — see [Two modes for missing treatment](#two-modes-for-missing-treatment)).
-This matters because the later group in the pair must still be a usable
-comparison — observably at baseline — when the earlier group switches, not
-merely share its baseline value on paper. In `, strict` mode every control is
-fully observed, so `Fg_trunc == Fg` everywhere and the test reduces to
-`sd(Fg) > 0` within the cell.
-
-`r(n_baseline_cells)` and `r(n_sfsd_cells)` report how the groups partition and
-how many of those cells actually carry identifying variation.
-
-#### When no two groups share a baseline
-
-The pair test above fails outright when every baseline cell is a singleton — and
-that is exactly what a **continuously distributed treatment at period one** looks
-like, since no two groups *can* share a value. Sharing a baseline is not an
-essential condition: the textbook relaxes it in **section 8.3.5.1 (Continuous
-treatment at period one)**, under 8.3.5 Extensions. What remains essential is
-variation in *when* groups first switch.
-
-So after every other design has been ruled out, the command makes one more check:
-if there are switchers and first-switch timing varies (`sd(Fg) > 0` over
-switchers, i.e. `r(same_Fg) = 0`), the design is still **SFSD**, reported with
-`r(sfsd_case) = "continuous-baseline"` and estimated with `did_multiplegt_dyn`'s
-**`continuous()`** option. A panel reaches `OTHER` only if it has no switchers, or
-no timing variation either.
-
-This check runs *after* the main chain, never inside it, so it cannot change the
-answer for a panel that already matched CLA, SAD, HAD or shared-baseline SFSD.
-
-Because the verdict is inferred from all baselines being distinct rather than from
-an observed pair, the report asks you to confirm your period-one treatment really
-is continuous — an ID or group code accidentally passed as `D` produces the same
-all-singleton pattern.
-
-### SFSD sub-case
-
-`r(design)` is `"SFSD"` for both routes, so code comparing against `"SFSD"` needs
-no change. `r(sfsd_case)` says which one:
-
-| `r(sfsd_case)` | When | Estimator |
+| `r(had_case)` | Meaning | Consequence |
 |---|---|---|
-| `shared-baseline` | A pair of groups shares a baseline value and first switches at different dates (`r(sfsd_pair) = 1`) | `did_multiplegt_dyn` |
-| `continuous-baseline` | No two groups share a baseline (`r(sfsd_pair) = 0`), but first-switch timing varies — section 8.3.5.1 | `did_multiplegt_dyn` with `continuous()` |
-| *(empty)* | The design is not SFSD | — |
+| `stayers` | Some groups keep `D = 0` at the switch | ATT and WATT identified, estimable at the usual √G rate |
+| `quasi-stayers` | No stayers, but `did_had`'s test does not reject that some doses are close to 0 | WATT identified using quasi-stayers as controls; estimated nonparametrically with bias-corrected CIs |
+| `none` | No stayers and no quasi-stayers | Only the **sign** of the WATT is identified, and only under an assumption on treatment-effect heterogeneity |
+| `undetermined` | `did_had` could not be run; `r(had_why)` says why | Design is still HAD — only the sub-case is unknown |
+
+The quasi-stayer test is `did_had`'s own. `did_had` itself runs on Stata 12+, but
+**this command needs Stata 16 or later to reach that sub-case**: `did_had` calls
+`preserve`, which cannot nest inside the one `whichDIDshouldIuse` already holds, so it
+is run inside a [frame](https://www.stata.com/features/overview/multiple-datasets-in-memory/)
+— and frames arrived in Stata 16. On Stata 14 or 15 the design is still reported as HAD,
+with `r(had_case) = "undetermined"`. Any other failure yields `undetermined` too, rather
+than an error.
+
+### SFSD sub-cases
+
+| `r(sfsd_case)` | Meaning |
+|---|---|
+| `shared-baseline` | The usual condition: a pair of groups share a baseline value and first switch at different dates |
+| `continuous-baseline` | No two groups share a baseline — the signature of a continuously distributed treatment at period one. This is the textbook's §8.3.5.1 extension; estimate with `did_multiplegt_dyn`'s `continuous()` option |
+
+`r(design)` is `"SFSD"` either way.
 
 ---
 
-## What it does to your data first
+## Preparing your data
 
-Four preparation steps run before anything is classified. Each can drop or adjust
-groups, and the command reports what happened — which lines are unconditional
-versus gated behind `detail` is covered in
-[Two modes for missing treatment](#two-modes-for-missing-treatment).
+Four things to check before running:
 
-1. **Balance the panel.** `fillin G T` gives every group a row for every calendar
-   period present in the data, so a gap becomes an explicit missing row.
-2. **Normalize time.** `t_cal` keeps your calendar values (1918, 1919, …); a new
-   `t` numbers periods `1, 2, 3, …`. All logic uses `t`; all messages use `t_cal`.
-   This is what makes `Fg-1` always a real period even when calendar years have
-   gaps — Pierce–Schott has no 2003, and it still works.
-3. **Baseline treatment.** `d_baseline` is `D` at `t == 1` in `, strict` mode —
-   *literally* the first period, and a group with missing treatment there is
-   dropped. By default, `d_baseline` is `D` at the first period it is actually
-   observed (`FD_g`), so a group whose first few periods are missing is kept
-   rather than dropped. Either way, a group where `D` is **never** observed at
-   all has nothing to check against and is dropped in both modes.
-4. **Pre-treatment integrity.** In `, strict` mode a group is dropped if `D` is
-   missing or differs from `d_baseline` at any period before its first switch —
-   a consistency check on `Fg`, since treatment is flat at baseline before the
-   first switch by definition, so a violation means `Fg` was measured wrong. By
-   default, a gap in that window is read as baseline (both observed neighbors
-   agree), unless the gap sits immediately before the apparent switch — then the
-   exact switch date is unknown, and the group is **demoted** to a control known
-   at baseline through the last period before the gap.
+1. **`T` is calendar time.** Gaps are fine — the command normalizes internally, so a
+   panel missing 2003 still has a well-defined "period before the switch".
+2. **The panel is long**, one row per group-period. Wide data must be reshaped first.
+3. **`D` is coded so that 0 means untreated.** The design definitions need a genuine
+   zero: a treatment coded `{4, 9}` is binary but has no untreated state. `r(is_binary)`
+   with `r(is_binary01) = 0` tells you a rescaling is needed.
+4. **Pre-period treatment is filled in**, not left missing, where you know it is zero.
+
+---
+
+## Missing treatment
+
+`D` missing outside a group's baseline period could mean the group is unusable. Two
+modes handle this.
+
+**Default** (no option), modeled on `did_multiplegt_dyn`: a group is kept whenever its
+first switch date can still be pinned down, and every adjustment that could change the
+answer is reported rather than silently applied.
+
+**`strict`**: drop any group with missing treatment at baseline or before its switch.
+
+| | `strict` | default |
+|---|---|---|
+| Baseline | `D` at `t == 1` literally; missing there drops the group | `D` at the first period it is observed |
+| Missing before the switch | Drops the group | Read as baseline if bracketed by baseline observations; if the gap sits right before the switch, the group is **demoted** to a control |
+| Control stops being observed | Not applicable | Counts as a usable never-treated group only while still known to be at baseline |
+| Missing after a switch | Left missing; the absorbing check rests on observed `D` only | Same |
+
+### When the repairs can change the answer
+
+The repairs keep groups that `strict` would discard, which is usually what you want. But
+**demotion removes a group from the switcher pool**, and the classification is decided
+entirely by which groups remain switchers and when they switch.
+
+| If demotion removes… | Reported instead |
+|---|---|
+| **Every** switcher | `OTHER`, reported as "no switchers" |
+| All switchers with a dose above 1, leaving only `D ∈ {0,1}` | `CLA` or `SAD` — the panel now looks binary |
+| All switchers at one date, leaving survivors sharing a single date | `CLA` or `HAD` — `same_Fg` flips to 1 |
+
+The first case is benign: the command refuses rather than inventing a design. The other
+two report a *different design* with no error.
+
+**How to check.** `r(n_switchers)` counts switchers *after* demotion, so:
+
+```stata
+whichDIDshouldIuse Y G T D, detail
+if !missing(r(n_demoted)) {
+    local looked_like = r(n_switchers) + r(n_demoted)
+    di "demoted: " r(n_demoted) " of " `looked_like' " apparent switchers"
+}
+```
+
+If that share is more than a few percent, treat the classification as provisional and
+re-run with `, strict`. The two modes fail differently, so agreement between them means
+the repairs are not driving the answer.
 
 ---
 
 ## Returned values
 
-`whichDIDshouldIuse` is `rclass`. Read `r()` **immediately** — the next command
-that returns `r()` results wipes it.
+`whichDIDshouldIuse` is `rclass`. Read `r()` **immediately** — the next command that
+returns `r()` results wipes it.
 
 ### The answer
 
@@ -336,10 +217,7 @@ that returns `r()` results wipes it.
 |---|---|---|
 | `r(design)` | string | `"CLA"`, `"SAD"`, `"HAD"`, `"SFSD"`, `"OTHER"` |
 | `r(estimator)` | string | Recommended estimator (empty if `OTHER`) |
-| `r(strict)` | 0/1 | 1 if `, strict` was used, 0 for the default mode |
-
-`"SFSD"` covers two routes — see `r(sfsd_case)` in
-[SFSD sub-case](#sfsd-sub-case) — and `"HAD"` likewise has `r(had_case)`.
+| `r(strict)` | 0/1 | 1 if `, strict` was used |
 
 ### Sample sizes
 
@@ -347,30 +225,8 @@ that returns `r()` results wipes it.
 |---|---|
 | `r(n_groups)` | Groups surviving both filters — the sample actually classified |
 | `r(n_switchers)` | Groups that change treatment at some point |
-| `r(n_never_treated)` | Groups that never change treatment, and are still usable (at baseline) at the earliest switch |
-| `r(n_truncated_controls)` | Controls that stop being observed before the end of the panel (default mode only; 0 in `, strict`) |
-
-`r(n_switchers) + r(n_never_treated) = r(n_groups)` only when there are no
-truncated controls that drop out *before* the earliest switch; those are excluded
-from `r(n_never_treated)` but still counted in `r(n_groups)`.
-
-### Sample adjustments (missing treatment)
-
-Each is a scalar count of groups affected; `.` means "not assessed in this mode"
-rather than zero. `strict` sets the drop counters and leaves the default-mode
-counters missing; the default mode does the reverse.
-
-| Return | Mode | Meaning |
-|---|---|---|
-| `r(n_dropped_baseline)` | `strict` | Groups dropped for missing `D` at `t == 1` |
-| `r(n_dropped_pretreat)` | `strict` | Groups dropped for a pre-treatment violation |
-| `r(n_dropped_alld)` | default | Groups dropped because `D` is never observed |
-| `r(n_late_entry)` | default | Groups whose baseline is taken at a later entry date |
-| `r(n_missing_at_start)` | default | Groups observed (via `Y`) before `D` is first observed |
-| `r(n_filled_pre_gap)` | default | Groups with a pre-switch gap read as baseline |
-| `r(n_demoted)` | default | Groups demoted to a control because a gap sits right before the apparent switch. **The one that can change the design** — see [When the repairs can change the answer](#when-the-repairs-can-change-the-answer) |
-| `r(n_exit_controls)` | default | Never-switchers whose `D` stops being observed before the end of the panel |
-| `r(n_post_gap_switchers)` | both | Switchers with `D` missing after their switch (reported, never dropped, in either mode) |
+| `r(n_never_treated)` | Groups that never change treatment and are still usable at the earliest switch |
+| `r(n_truncated_controls)` | Controls that stop being observed before the panel ends (default mode only) |
 
 ### Condition flags (all 0/1)
 
@@ -384,44 +240,33 @@ The inputs to the decision; each answers one yes/no question.
 | `r(is_binary01)` | Those two values are exactly 0 and 1 |
 | `r(is_absorbing)` | Once switched, `D` never changes again |
 | `r(zero_baseline)` | Every group has `d_baseline == 0` |
-| `r(common_baseline)` | Every group has the *same* `d_baseline` (not necessarily 0) |
+| `r(common_baseline)` | Every group has the *same* baseline (not necessarily 0) |
 | `r(heterog_dose)` | The size of the first treatment change varies across switchers |
 | `r(sfsd_pair)` | Two groups share a baseline and first switch at different dates |
 
-`r(n_baseline_cells)` and `r(n_sfsd_cells)` accompany `r(sfsd_pair)`. When
-`r(sfsd_pair) = 0` the design can still be SFSD through the continuous-baseline
-extension — see [SFSD sub-case](#sfsd-sub-case) and `r(sfsd_case)`.
-
-**`is_binary` vs `is_binary01`.** `is_binary` asks "only two values?" — a treatment
-in `{4, 9}` passes. `is_binary01` also requires those values to be 0 and 1. The
-definitions need a genuine 0 (that is what makes a control group untreated), so
-CLA and SAD branch on `is_binary01`. Both are reported so a `{4,9}` coding is
-*visible* rather than silently accepted or silently rejected. Seeing
-`is_binary = 1` with `is_binary01 = 0` means your treatment needs rescaling.
-
-**`zero_baseline` vs `common_baseline`** is the same relationship: the strict
-version the definitions require, and the looser "everyone starts from the same
-place, whatever it is." Only the strict one drives the branches.
+`is_binary` / `is_binary01` and `common_baseline` / `zero_baseline` are loose/strict
+pairs. Only the strict member drives a branch; the loose one exists so that a `{4,9}`
+coding is *visible* rather than silently handled.
 
 ### HAD sub-case
 
 | Return | Meaning |
 |---|---|
-| `r(had_case)` | `"stayers"`, `"quasi-stayers"`, `"none"`, `"undetermined"`; empty unless the design is HAD |
+| `r(had_case)` | `"stayers"`, `"quasi-stayers"`, `"none"`, `"undetermined"`; empty unless HAD |
+| `r(had_why)` | Why the quasi-stayer test could not run; set only when `undetermined` |
 | `r(n_stayers)` | Groups still at `D = 0` at the switch date |
-| `r(nonneg_dose)` | 1 if no switcher's dose at the switch is negative (required for HAD) |
 | `r(had_d_min)` | Lowest positive dose at the switch |
 | `r(had_tie)` | 1 if two or more switchers share that lowest dose |
-| `r(n_at_d_min)` | Switchers at the lowest dose — the comparison arm of the `1(D > d_min)` 2SLS the tie case suggests |
-| `r(n_above_d_min)` | Switchers strictly above it — the treated arm. The smaller of the two arms binds: one group on either side makes that instrument weak |
+| `r(n_at_d_min)` / `r(n_above_d_min)` | The two arms of the `1(D > d_min)` 2SLS the tie case suggests; the smaller one binds |
+| `r(qs_stat)`, `r(qs_pval)`, `r(qs_n)` | `did_had`'s QS statistic, p-value and N; missing unless it ran |
+| `r(qs_reject)` | 1 if quasi-stayers are rejected at 5% |
 
-### SFSD sub-case returns
+### SFSD sub-case
 
 | Return | Meaning |
 |---|---|
-| `r(sfsd_case)` | `"shared-baseline"`, `"continuous-baseline"`; empty unless the design is SFSD. See [SFSD sub-case](#sfsd-sub-case) |
-| `r(qs_stat)`, `r(qs_pval)`, `r(qs_n)` | `did_had`'s QS statistic, its p-value, and the number of groups it used; missing unless `did_had` was run |
-| `r(qs_reject)` | 1 if quasi-stayers are rejected at 5% (or there is a tie); missing if not assessed |
+| `r(sfsd_case)` | `"shared-baseline"`, `"continuous-baseline"`; empty unless SFSD |
+| `r(n_baseline_cells)` / `r(n_sfsd_cells)` | Distinct baseline values, and how many contain an SFSD pair |
 
 ### Switch dates
 
@@ -431,49 +276,25 @@ place, whatever it is." Only the strict one drives the branches.
 | `r(common_switch_cal)` | calendar |
 | `r(first_switch_cal)` / `r(last_switch_cal)` | calendar — the range |
 
----
+### Sample adjustments
 
-## Running the tests
+Each is a count of groups affected. `.` means "not assessed in this mode", not zero.
 
-```bash
-cd Stata
-"/c/Program Files/StataNow19/StataSE-64.exe" -e do examples.do
-```
-
-`examples.do` loads the panels via `../data/`, so run it from `Stata/`. `-e` runs
-batch and writes `examples.log` next to the do-file. **Stata's exit code is not reliable** —
-a file that fails to run at all still exits 0, so read the log.
-
-`examples.do` runs one block per panel, each labelled with the design it is
-expected to return, so a mismatch is visible when scanning the log. Every call
-passes `, detail`: the log is the test suite, and a regression that prints only
-`DESIGN: SAD` where `SFSD` was expected tells you *what* broke but not *why* —
-the diagnostics table is the evidence. The Moser–Voena block additionally runs
-once **without** `detail`, so the log also carries one sample of default output.
-Current results:
-
-| Dataset | Design | Why |
+| Return | Mode | Meaning |
 |---|---|---|
-| Moser–Voena | **CLA** | 336 subclasses all switch in 1919; 6912 never |
-| Wolfers | **SAD** | 29 states adopt unilateral divorce 1969–1985 |
-| Gentzkow et al. | **SFSD** | #newspapers is a non-absorbing 0–45 count |
-| Pierce–Schott | **HAD**, quasi-stayers | Common 2001 switch, continuous NTR-gap dose; `did_had`'s QS = 6.15, p = 0.14 |
-
-`Stata/test_had.do` tests the HAD sub-cases on synthetic panels with known QS
-values, and checks that the QS value on Pierce–Schott equals a standalone `did_had`
-run. `Stata/test_missing.do` tests both missing-treatment modes against panels
-built by `Stata/make_synthetic.do` (written to `data/synthetic/`), each isolating
-one kind of gap so `strict` and the default mode give a visibly different — or,
-for the guard cases, the same — answer.
-
-Pierce–Schott ships **wide** (time is in the variable names) and is reshaped to a
-long panel inside `examples.do`, following the textbook's own prep.
+| `r(n_dropped_baseline)` | `strict` | Dropped for missing `D` at `t == 1` |
+| `r(n_dropped_pretreat)` | `strict` | Dropped for a pre-treatment violation |
+| `r(n_dropped_alld)` | default | Dropped because `D` is never observed |
+| `r(n_late_entry)` | default | Baseline taken at a later entry date |
+| `r(n_missing_at_start)` | default | Observed via `Y` before `D` is first observed |
+| `r(n_filled_pre_gap)` | default | Pre-switch gap read as baseline |
+| `r(n_demoted)` | default | Demoted to a control — **the one that can change the design** |
+| `r(n_exit_controls)` | default | Never-switchers whose `D` stops being observed early |
+| `r(n_post_gap_switchers)` | both | Switchers with `D` missing after their switch |
 
 ---
 
-## Using the returns in a loop
-
-The point of the `r()` returns is running this across many datasets:
+## Using the returns across many datasets
 
 ```stata
 foreach f in paper1 paper2 paper3 {
@@ -483,68 +304,60 @@ foreach f in paper1 paper2 paper3 {
 }
 ```
 
-`quietly` here suppresses the classification report *and* the unconditional
-dropped-group line(s), so the loop prints one line per dataset. Every `r()`
-return is set regardless — and regardless of `detail`, which only controls what
-is displayed. There is no middle setting that keeps the warnings but hides the
-report; if you want the warnings while looping, drop `quietly` and accept the
-longer log.
-
-Datasets with different variable names need a per-dataset mapping, which is why
-`examples.do` uses four explicit blocks rather than a loop.
+`quietly` suppresses the report *and* the dropped-group warnings, so the loop prints one
+line per dataset. Every `r()` return is set regardless. There is no middle setting that
+keeps the warnings but hides the report.
 
 ---
 
-## Conventions worth knowing before editing
+## Worked examples
 
-- **`as text` / `as result` for output, never `in red`.** Red is Stata's *error*
-  color; the whole program used it once, which made every successful run look
-  like a failure. Labels and prose are `as text`, computed values are
-  `as result`, and `as error` stays reserved for genuine errors (there are none
-  yet). Within a single `di`, a style directive applies to everything after it —
-  including across a `///` continuation — so a literal that follows a value must
-  re-state `as text`, or it inherits the value's color.
-- **The data-manipulation commands are `quietly`.** `gen`, `egen`, `drop`,
-  `fillin` and friends otherwise announce every step (`(282,672 missing values
-  generated)`), which buried the actual answer once the diagnostics went behind
-  `detail`. Keep new ones quiet.
-- **Named scalars, not `r()`, in the conditionals.** Every `r(mean)`/`r(min)` is
-  captured into a named scalar on the line right after the command that produced
-  it; the classification block reads only those names. `r()` is overwritten by the
-  next command, and a bare `r(mean)` deep inside nested `if`s is unreadable.
-- **Gating idiom: quote *both* sides.** `if ("`detail'" != "")`, never
-  `if (`detail' != "")` — unquoted, an absent option expands to `if ( != "")`, a
-  syntax error on the default path. The missing-treatment breakdown gates on two
-  conditions this way: `if ("`strict'" == "") & ("`detail'" != "")`.
-- **The dropped-group line(s) are never gated by `detail`.** They report groups
-  discarded from the caller's sample — a safety warning, not a diagnostic — so a
-  run that silently loses 400 groups must not look like one that loses none.
-  Everything else missing treatment can report (late entries, filled gaps,
-  demotions, exits) changes nothing about which groups survive, so it lives
-  behind `detail` like the rest of the diagnostics.
-- **`set varabbrev off`** for the whole program, restored on exit. Stata otherwise
-  resolves an abbreviated name to any variable it uniquely prefixes — `drop t`
-  silently deleted `t_cal` and cost a long debugging session.
-- **The `keep Y G T D` is load-bearing**, not tidying: the program uses bare scalar
-  names (`Tmax`, `n_groups`, …), and Stata resolves a bare name to a *variable*
-  before a scalar.
-- **`preserve`/`restore`** protect the caller's data, so constructed variables
-  (`Fg`, `d_baseline`, `first_change`) do **not** survive the call. Comment out the
-  pair to inspect them.
-- **`did_had` runs in its own frame.** It calls `preserve`, which cannot nest
-  inside ours (r(621)), so the HAD sub-case step copies the switchers into a
-  temporary frame and runs it there. It is `eclass`, so the caller's `e()` is held
-  and restored around the call. It also has side effects of its own: `mata clear`,
-  and global matrices such as `res_XX` and `np_test`.
-- **Deliberate edge cases:** `is_absorbing = 0` when there are no post-switch
-  observations (not 1), and `same_Fg = 1` when there is a single switcher (one
-  switcher trivially has no timing variation).
-- **`Fg_trunc`, not `Fg`, bounds a control's usable horizon.** `Fg_trunc =
-  min(Fg, end_g + 1)`, where `end_g` is the last period a control is known to be
-  at baseline. It equals `Fg` for switchers and for fully observed controls, so
-  in `, strict` mode `Fg_trunc == Fg` everywhere and every check that uses it
-  (never-treated count, the SFSD pair test) reduces to the pre-missing-treatment
-  rule.
-- **Never write a `/*`-containing glob inside a block comment.** Stata *nests*
-  block comments, so it opens a second level and silently swallows the rest of the
-  file — with no error and a zero exit code.
+`Stata/examples.do` runs the command on fourteen panels covering every design and
+sub-case. Run it from `Stata/`, since it loads the bundled panels via `../data/`; it
+writes `examples.log` beside itself.
+
+| Section | Panel | Result |
+|---|---|---|
+| 1a | Moser–Voena | `CLA` |
+| 1b | Wolfers | `SAD` |
+| 1c | Gentzkow et al. | `SFSD`, shared baseline |
+| 1d | Pierce–Schott | `HAD`, quasi-stayers |
+| 2 | Gentzkow, discrete vs. continuous treatment | `SFSD`, both sub-cases |
+| 3 | Synthetic | `HAD`, all four sub-cases |
+| 4 | Synthetic | `OTHER` |
+
+The panels in `data/` are the textbook's own examples. Pierce–Schott ships **wide** and
+is reshaped inside the do-file, following the textbook's prep.
+
+---
+
+## Citation
+
+The design definitions and estimator recommendations follow:
+
+> de Chaisemartin, C. and X. D'Haultfœuille. *Difference-in-Differences for Policy
+> Evaluation.* Chapters 3, 6, 7 and 8.
+
+**If your panel is HAD without stayers**, the sub-case is decided by `did_had`'s
+quasi-untreated test, so cite that package as its authors request — de Chaisemartin
+et al. (2025) plus the two `nprobust` papers underlying its nonparametric step:
+
+> de Chaisemartin, C., D. Ciccia, X. D'Haultfœuille and F. Knau (2025).
+> [Difference-in-Differences Estimators When No Unit Remains Untreated](https://arxiv.org/abs/2405.04465).
+
+> Calonico, S., M. D. Cattaneo and M. H. Farrell (2019).
+> [nprobust: Nonparametric Kernel-Based Estimation and Robust Bias-Corrected Inference](https://nppackages.github.io/references/Calonico-Cattaneo-Farrell_2019_JSS.pdf).
+> *Journal of Statistical Software*, 91(8): 1–33.
+
+> Calonico, S., M. D. Cattaneo and M. H. Farrell (2018).
+> [On the Effect of Bias Estimation on Coverage Accuracy in Nonparametric Inference](https://nppackages.github.io/references/Calonico-Cattaneo-Farrell_2018_JASA.pdf).
+> *Journal of the American Statistical Association*, 113(522): 767–779.
+
+`did_had` is by Clément de Chaisemartin and co-authors:
+https://github.com/chaisemartinPackages/did_had
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
