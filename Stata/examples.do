@@ -1,8 +1,17 @@
+*! examples.do -- worked examples for whichDIDshouldIuse
+*!
+*! Runs the command on fourteen panels covering every design and sub-case:
+*! the four worked examples from the DID textbook, an SFSD pair contrasting a
+*! discrete and a continuous treatment, the four HAD sub-cases, and a panel
+*! that fits none of the designs.
+*!
+*! Run from this directory -- the panels are loaded via ../data/.
+
 clear all
 set more off
 
 cap log close
-log using tutorial_1006.log, replace text
+log using examples.log, replace text
 
 
 // --------------------------------------------------------------------------- //
@@ -160,6 +169,27 @@ gen double y = g/100 + t + rnormal()
 * whichDIDshouldIuse  Y   G   T   D
 whichDIDshouldIuse 	  y   g   t   d, detail
 
+*III. Mass point, fully deterministic (no input block, no seed)
+*     4 groups tie at the lowest dose, 4 sit above it, all switch at t = 3
+*     and none stays untreated. The tie makes did_had's QS statistic
+*     D(1)/(D(2)-D(1)) undefined, so the tie branch fires and did_had is
+*     never called -- this is the fast way to see the "none" message.
+clear
+set obs 8
+gen g = _n
+gen double dose = cond(g <= 4, 3, 7)	//4 groups tie at the lowest dose
+expand 5
+bys g: gen t = _n
+gen double d = cond(t >= 3, dose, 0)	//common switch at t = 3
+gen double y = g + t
+
+* whichDIDshouldIuse  Y   G   T   D
+whichDIDshouldIuse 	  y   g   t   d
+
+di "had_case   = " `"`r(had_case)'"'
+di "had_tie    = " r(had_tie) "   had_d_min = " r(had_d_min)
+di "n_at_d_min = " r(n_at_d_min) "   n_above_d_min = " r(n_above_d_min)
+
 
 *--- 3d) Undetermined ---*
 *------------------------*
@@ -188,17 +218,43 @@ whichDIDshouldIuse 	  y   g   t   d, detail
 *         to fit a local polynomial in the dose, and with few groups the fit has too 
 *         few points, so QS = D(1)/(D(2)-D(1)) subscripts a vector with fewer than two 
 *         positive doses -> r(3301). That is this example: 3 groups.
-*   (ii)  did_had, lprobust or gtools is not installed
-*   (iii) Stata is older than version 16, since did_had calls preserve and must run in
+*   (ii)  Stata is older than version 16, since did_had calls preserve and must run in
 *         a separate frame
-*   (iv)  did_had exits without leaving e(estimates), which it does silently on some
+*   (iii) did_had exits without leaving e(estimates), which it does silently on some
 *         failures (rc = 0)
 *
 *In every case the design is still HAD: only the sub-case is unknown. r(had_why) says 
 *which of the above happened, and the package never errors out.
 
 
+// --------------------------------------------------------------------------- //
+// -- (4) OTHER: none of the four designs								-- //
+// --------------------------------------------------------------------------- //
 
+*--- 4a) Non-absorbing, common switch date ---*
+*---------------------------------------------*
 
+*The only panel in this file where r(design) is not a named design. Every group
+*switches 0 -> 1 at t = 3 and back to 0 at t = 5, so:
+*   is_absorbing = 0  the treatment reverts     -> rules out CLA and SAD
+*   heterog_dose = 0  every dose is the same    -> rules out HAD
+*   same_Fg      = 1  one common switch date    -> rules out SFSD, and blocks
+*                                                  the continuous-baseline
+*                                                  fallback, which needs
+*                                                  variation in Fg
+*The report then lists, design by design, which checks failed.
 
+clear
+set obs 6
+gen g = _n
+expand 6
+bys g: gen t = _n
+gen byte d = inrange(t, 3, 4)	//0 -> 1 at t=3, back to 0 at t=5
+gen double y = g + t
 
+* whichDIDshouldIuse  Y   G   T   D
+whichDIDshouldIuse 	  y   g   t   d, detail
+
+di "design       = " `"`r(design)'"'
+di "is_absorbing = " r(is_absorbing) "   heterog_dose = " r(heterog_dose)
+di "same_Fg      = " r(same_Fg) "   sfsd_pair    = " r(sfsd_pair)

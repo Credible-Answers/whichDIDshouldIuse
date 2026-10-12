@@ -1,4 +1,4 @@
-*! whichDIDshouldIuse 0.5  06oct2026
+*! whichDIDshouldIuse 1.0.0  12oct2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with a less strict
 *! default for missing treatment and a strict option.
 
@@ -111,10 +111,17 @@
     needs no change; r(sfsd_case) separates the two.
 
   DEPENDENCY
-    distinct (SSC):  ssc install distinct
-    HAD panels without stayers also use did_had (SSC), which needs lprobust
-    (nprobust) and gtools. If any is missing the sub-case is "undetermined";
-    the classification itself never depends on them.
+    Missing packages are installed on demand rather than reported, so a fresh
+    Stata needs no setup step.
+      distinct (SSC)  used on every path; section 0 installs it, and a
+                      FAILED install is the one fatal dependency error.
+      did_had (SSC), lprobust (in nprobust, net install -- NOT on SSC) and
+                      gtools (SSC)  needed only for the HAD quasi-stayer
+                      test; section 7b installs them. Only an install that
+                      still leaves a package missing -- no network, a
+                      read-only PLUS directory -- leaves the sub-case
+                      "undetermined". The classification itself never
+                      depends on them.
 
   Coding practice: every classification conditional tests a NAMED SCALAR
   defined where the underlying statistic is computed; each r() value is
@@ -129,6 +136,25 @@
 program define whichDIDshouldIuse, rclass
     version 14
     syntax varlist(min=4 max=4 numeric) [, DETail STRict]
+
+    * ---------------------------------------------------------------------- *
+    * 0. Dependency. distinct is used on every path, so it is checked before
+    *    any work is done -- a failure here costs nothing. It is installed
+    *    rather than reported; only an install that still leaves it missing
+    *    is an error, and that one IS genuine, hence "as error" and the exit.
+    * ---------------------------------------------------------------------- *
+
+    qui capture which distinct
+    if (_rc) {
+        di as text "Installing " as result "distinct" as text " from SSC ..."
+        capture noisily ssc install distinct, replace
+        qui capture which distinct
+        if (_rc) {
+            di as error "whichDIDshouldIuse requires distinct, and it could not be installed."
+            di as error "Install it by hand with:  ssc install distinct"
+            exit 601
+        }
+    }
 
     * Turn OFF variable-name abbreviation for the whole program: otherwise
     * "drop t" deletes t_cal when t_cal is the only t* variable.
@@ -621,10 +647,30 @@ program define whichDIDshouldIuse, rclass
             scalar qs_reject = 1
         }
         else {
+            * Install what is missing rather than giving up on the sub-case.
+            * lprobust ships inside nprobust, which is NOT on SSC -- it needs
+            * the net install, exactly as did_had.ado itself does it. The
+            * re-check after each install is what separates "was missing,
+            * fixed" from "still missing", and it is what keeps had_missing
+            * meaningful: only a package that survives its own install lands
+            * there. "capture noisily" so no network failure can stop the
+            * program, while the install output stays visible.
             local had_missing ""
             foreach cmd in did_had lprobust gtools {
-                capture which `cmd'
-                if (_rc) local had_missing "`had_missing' `cmd'"
+                qui capture which `cmd'
+                if (_rc) {
+                    di as text "Installing " as result "`cmd'" as text ///
+                       " for the HAD quasi-stayer test ..."
+                    if ("`cmd'" == "lprobust") {
+                        capture noisily net install nprobust, replace ///
+                            from(https://raw.githubusercontent.com/nppackages/nprobust/master/stata)
+                    }
+                    else {
+                        capture noisily ssc install `cmd', replace
+                    }
+                    qui capture which `cmd'
+                    if (_rc) local had_missing "`had_missing' `cmd'"
+                }
             }
 
             if (c(stata_version) < 16) {
@@ -684,7 +730,9 @@ program define whichDIDshouldIuse, rclass
         di as text    "  Binary and absorbing treatment, no variation in treatment"
         di as text    "  timing: all " n_switchers " treated group(s) experience treatment at"
         di as text    "  t=" %4.0f common_switch_cal " (period " %2.0f common_switch_t "), and " n_never_treated " group(s) never switch."
+        di as text    ""
         di as text    "  Estimator: `estimator'"
+        di as text    ""
         di as text    "  See Chapter 3 of the DID textbook (de Chaisemartin and"
         di as text    "  D'Haultfoeuille)."
     }
@@ -694,7 +742,9 @@ program define whichDIDshouldIuse, rclass
         di as text    "  Binary and absorbing treatment, with variation in treatment"
         di as text    "  timing across the " n_switchers " switching group(s): first switches"
         di as text    "  occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    ""
         di as text    "  Estimator: `estimator'"
+        di as text    ""
         di as text    "  See Chapter 6 of the DID textbook."
     }
     else if ("`design'" == "HAD") {
@@ -707,114 +757,113 @@ program define whichDIDshouldIuse, rclass
 
         if ("`had_case'" == "stayers") {
             di as text "  Sub-case: " as result "stayers" as text " -- " as result n_stayers ///
-               as text " group(s) remain untreated at the switch."
-            di as text "  ATT and WATT are identified under no-anticipation and parallel"
-            di as text "  trends, and estimable at the usual sqrt(G) rate."
+               as text " group(s) stay untreated at t=" as result %4.0f common_switch_cal ///
+               as text "."
+            di as text ""
+            di as text "  ATT and WATT are identified; they can be estimated at the usual"
+            di as text "  sqrt(G) rate."
+            di as text ""
             di as text "  Estimator: WATT by ivregress 2sls dY (d = 1(d>0));"
             di as text "             ATT and WATT by did_multiplegt_stat."
+            di as text ""
+            di as text "  See Chapter 7 of the DID textbook."
         }
         else if ("`had_case'" == "quasi-stayers") {
             di as text "  Sub-case: " as result "quasi-stayers" as text " -- no group remains untreated,"
-            di as text "  but did_had's test does not reject that some doses are close to 0:"
-            di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
-               as text "  (N = " as result qs_n as text ", reject at 5% if QS > 19)"
-            di as text "  WATT is identified, using the quasi-stayers as controls; it is"
-            di as text "  estimated at a slower rate, with bias-corrected CIs."
+            di as text "  but did_had's test does not reject the null that some doses are"
+            di as text "  close to 0 (p-value = " as result %5.3f qs_pval as text ")."
+            di as text ""
+            di as text "  The WATT parameter is identified, using the quasi-stayers as"
+            di as text "  controls; it can be estimated nonparametrically, with"
+            di as text "  bias-corrected CIs."
+            di as text ""
             di as text "  Estimator: `estimator'"
+            di as text ""
+            di as text "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
         }
         else if ("`had_case'" == "none") {
-            di as text "  Sub-case: " as result "no stayers or quasi-stayers" as text " -- the lowest dose"
-            di as text "  is not close to 0."
+            di as text "  Sub-case: " as result "no stayers or quasi-stayers" as text " -- the lowest treatment dose"
+            di as text "  is not close to 0. It is still possible to identify the sign of the"
+            di as text "  WATT, if one is willing to make an assumption on treatment effect"
+            di as text "  heterogeneity (on top of the usual parallel-trends and"
+            di as text "  no-anticipation assumptions)."
+            * The two routes here differ only in what can be estimated: a mass
+            * point at the lowest dose gives a usable 1(d > d_min) instrument,
+            * a rejected QS test does not.
+            * The blank line is printed once, BEFORE the branch, so the gap
+            * above Estimator is identical on both routes.
+            di as text ""
             if (had_tie) {
-                di as text "    " as result n_at_d_min as text " groups share the lowest dose (" ///
-                   as result had_d_min as text ") and " as result n_above_d_min ///
-                   as text " are above it:"
-                di as text "    a mass point, not a quasi-stayer. did_had's QS statistic is"
-                di as text "    undefined here. If that mass point is genuine -- not an artifact"
-                di as text "    of a rounded dose -- the estimand reduces to 2SLS with"
-                di as text "    1(d > " as result had_d_min as text ") as instrument. The smaller of the two counts"
-                di as text "    above is the binding one: a single group on either side makes"
-                di as text "    that instrument weak."
+                di as text "  Estimator: ivregress 2sls dY (d = 1(d>" as result had_d_min as text "))"
             }
             else {
-                di as text "    QS = " as result %6.3f qs_stat as text ", p = " as result %5.3f qs_pval ///
-                   as text "  (N = " as result qs_n as text ", reject at 5% if QS > 19)"
+                di as text "  Estimator: `estimator'"
             }
-            di as text "  WARNING: without stayers or quasi-stayers, WATT is not identified"
-            di as text "  under parallel trends alone. Using the least-treated as controls"
-            di as text "  needs a bounded-heterogeneity assumption (BOUND-HET), which"
-            di as text "  pretrends cannot test, and then identifies only the SIGN of WATT."
-            di as text "  Estimator: `estimator'"
+            di as text ""
+            di as text "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
         }
         else {
-            di as text "  Sub-case: " as result "undetermined" as text " -- no group remains untreated,"
-            di as text "  and the quasi-stayer test could not be run:"
-            di as text "    `had_why'"
+            di as text "  Sub-case: " as result "no stayers" as text " -- the quasi-stayer test could not be run."
+            di as text "  The reason why the quasi-stayer test could not be run is stored in"
+            di as text "  r(had_why)."
+            di as text ""
+            * Only reachable when section 7b tried to install and the package
+            * is STILL missing -- no network, a read-only PLUS directory. On a
+            * normal run the install repairs it and this never prints.
             if ("`had_missing'" != "") {
-                di as text "  Install with:  ssc install did_had   ssc install gtools"
-                di as text "                 net install nprobust, from(https://raw.githubusercontent.com/nppackages/nprobust/master/stata)"
+                di as text "  Automatic installation failed. Install by hand with:"
+                di as text "    ssc install did_had"
+                di as text "    ssc install gtools"
+                di as text "    net install nprobust, from(https://raw.githubusercontent.com/nppackages/nprobust/master/stata)"
             }
-            di as text "  Estimator: `estimator' (it runs the quasi-stayer test itself)"
+            di as text ""
+            di as text "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
         }
-        di as text    "  See Chapter 7 of the DID textbook; de Chaisemartin et al. (2026)."
     }
     else if ("`sfsd_case'" == "continuous-baseline") {
-        di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
+        di as result "  DESIGN: Staggered First Switch Design (SFSD)"
         di as text    "{hline 70}"
-        di as text    "  Reached through the CONTINUOUS BASELINE TREATMENT extension."
+        di as text    "  The design is not a classical DID design, a staggered adoption"
+        di as text    "  design, or an heterogeneous adoption design. On the other hand, it"
+        di as text    "  is a staggered first switch design: some groups experience their"
+        di as text    "  first treatment switch at different dates."
         di as text    ""
-        di as text    "  No two groups share the same baseline treatment: all " ///
-           as result %4.0f n_baseline_cells as text " baseline"
-        di as text    "  cell(s) are singletons, one per group. That is the signature of a"
-        di as text    "  CONTINUOUSLY DISTRIBUTED treatment at period one, not a defect --"
-        di as text    "  with d_baseline continuous, no two groups CAN share a value."
-        di as text    ""
-        di as text    "  The usual SFSD condition asks for a pair of groups sharing a"
-        di as text    "  baseline that first switch at different dates. The first half of"
-        di as text    "  that is not essential, and is relaxed in section 8.3.5.1. What"
-        di as text    "  is essential -- variation in WHEN groups first switch -- holds"
-        di as text    "  here: sd(Fg) over switchers = " as result sd_Fg_value as text ", with the " ///
-           as result %4.0f n_switchers as text " switcher(s)"
-        di as text    "  first switching between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
-        di as text    ""
-        di as text    "  Estimator: `estimator'"
-        di as text    "  The continuous() option is REQUIRED for this design. Without it"
-        di as text    "  did_multiplegt_dyn looks for same-baseline comparison groups that"
-        di as text    "  a continuous period-one treatment does not provide."
-        di as text    ""
-        di as text    "  CHECK THIS: the verdict is inferred from every baseline value"
-        di as text    "  being distinct, not from a shared-baseline pair. Confirm your D"
-        di as text    "  at period one really is continuous -- an ID or a group code passed"
-        di as text    "  as D would look exactly the same way."
-        di as text    "  See Chapter 8 of the DID textbook, section 8.3.5.1 (Continuous"
-        di as text    "  treatment at period one), in 8.3.5 Extensions."
-    }
-    else if ("`design'" == "SFSD") {
-        di as result "  DESIGN: Staggered First-Switch Design (SFSD)"
-        di as text    "{hline 70}"
-        di as text    "  The panel is not CLA, SAD or HAD, but it does satisfy the"
-        di as text    "  staggered first-switch condition: some groups share the same"
-        di as text    "  baseline treatment while first switching at different dates."
         di as text    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
         di as text    ""
-        di as text    "  SFSD is the broadest design tested here. Unlike CLA/SAD it"
-        di as text    "  permits NON-ABSORBING treatment (a group may switch more than"
-        di as text    "  once, including back to its baseline), and unlike HAD it permits"
-        di as text    "  HETEROGENEOUS baseline doses."
-        di as text    ""
-        di as text    "  Identifying variation: " n_sfsd_cells " of " n_baseline_cells " baseline cell(s) contain"
-        di as text    "  groups that first switch at different dates."
         di as text    "  Estimator: `estimator'"
+        di as text    ""
+        di as text    "  As the period-one treatment is continuously distributed (all groups"
+        di as text    "  have different period-one treatment), the did_multiplegt_dyn package"
+        di as text    "  needs to be used with the continuous option."
+        di as text    ""
+        di as text    "  See Chapter 8 of the DID textbook. In particular, see section"
+        di as text    "  8.3.5.1 for details on the continuous option."
+    }
+    else if ("`design'" == "SFSD") {
+        di as result "  DESIGN: Staggered First Switch Design (SFSD)"
+        di as text    "{hline 70}"
+        di as text    "  The design is not a classical DID design, a staggered adoption"
+        di as text    "  design, or an heterogeneous adoption design. On the other hand, it"
+        di as text    "  is a staggered first switch design: some groups share the same"
+        di as text    "  baseline treatment but experience their first treatment switch at"
+        di as text    "  different dates."
+        di as text    ""
+        di as text    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    ""
+        di as text    "  Estimator: `estimator'"
+        di as text    ""
         di as text    "  See Chapter 8 of the DID textbook."
     }
     else {
-        di as result "  DESIGN: OTHER"
+        di as result "  DESIGN: Other Design"
         di as text    "{hline 70}"
-        di as text    "  Your design isn't CLA, SAD, HAD, or SFSD."
+        di as text    "  Your design does not fit into any of the designs studied in the DID"
+        di as text    "  textbook."
         di as text    ""
-        di as text    "  Why each was ruled out:"
+        di as text    "  Why each design was ruled out:"
 
         * ---- CLA ----
+        di as text    ""
         di as text    "   CLA requires: switchers, binary {0,1}, absorbing, no timing"
         di as text    "                 variation, never-treated groups, zero baseline."
         if (!any_switchers)         di as text "     - failed: no switchers"
@@ -825,6 +874,7 @@ program define whichDIDshouldIuse, rclass
         if (!zero_baseline)         di as text "     - failed: baseline treatment not 0 for all groups"
 
         * ---- SAD ----
+        di as text    ""
         di as text    "   SAD requires: switchers, binary {0,1}, absorbing, timing variation."
         if (!any_switchers)         di as text "     - failed: no switchers"
         if (!is_binary01)           di as text "     - failed: treatment not binary {0,1}"
@@ -832,6 +882,7 @@ program define whichDIDshouldIuse, rclass
         if (same_Fg)                di as text "     - failed: no variation in treatment timing"
 
         * ---- HAD ----
+        di as text    ""
         di as text    "   HAD requires: switchers, common switch date, zero baseline,"
         di as text    "                 heterogeneous, non-negative dose at the switch."
         if (!any_switchers)         di as text "     - failed: no switchers"
@@ -841,19 +892,19 @@ program define whichDIDshouldIuse, rclass
         if (any_switchers & !nonneg_dose) di as text "     - failed: some doses at the switch are negative"
 
         * ---- SFSD ----
-        * Mirrors section 7 AND the 7a fallback. Reaching OTHER with switchers
-        * means same_Fg was 1, else 7a would have fired -- so say that too,
-        * or the user sees only the baseline-pair failure and cannot tell why
-        * the 8.3.5.1 extension did not rescue the panel.
+        di as text    ""
         di as text    "   SFSD requires: switchers, and two groups sharing a baseline"
-        di as text    "                  treatment value that first switch at different dates."
+        di as text    "                  treatment value that first switch at"
+        di as text    "                  different dates."
         if (!any_switchers)         di as text "     - failed: no switchers"
-        if (!sfsd_pair)             di as text "     - failed: no two groups share a baseline treatment value while first switching at different dates"
-        di as text    "   SFSD also admits a continuously distributed baseline treatment"
-        di as text    "                  (section 8.3.5.1), which needs only variation in"
-        di as text    "                  when groups first switch."
-        if (!any_switchers)         di as text "     - failed: no switchers"
-        if (same_Fg)                di as text "     - failed: no variation in first-switch timing either, so the continuous-baseline extension does not apply"
+        if (!sfsd_pair) {
+            di as text "     - failed: no two groups share a baseline treatment value while"
+            di as text "               first switching at different dates"
+        }
+
+        di as text    ""
+        di as text    "  See Section 8.5.2 of the DID textbook for possible estimation"
+        di as text    "  strategies in such cases."
     }
 
     * The absorbing verdict ignores unobserved d, so a reversal hidden in a
