@@ -751,10 +751,10 @@ program define whichDIDshouldIuse, rclass
         di as result "  DESIGN: Heterogeneous Adoption Design (HAD)"
         di as text    "{hline 70}"
         di as text    "  All groups untreated at baseline (t=" %4.0f cal_min "); all " n_switchers " treated"
-        di as text    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the size"
-        di as text    "  of that change varies across groups."
+        di as text    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the treatment dose varies"
+        di as text    "  across treated groups."
         di as text    ""
-
+		
         if ("`had_case'" == "stayers") {
             di as text "  Sub-case: " as result "stayers" as text " -- " as result n_stayers ///
                as text " group(s) stay untreated at t=" as result %4.0f common_switch_cal ///
