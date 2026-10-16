@@ -72,7 +72,7 @@ no error, no warning.
 ## Syntax
 
 ```stata
-whichDIDshouldIuse Y G T D [, detail strict]
+whichDIDshouldIuse Y G T D [if] [in] [, detail strict]
 ```
 
 | Argument | Meaning |
@@ -96,6 +96,38 @@ is **never** suppressed. That line reports groups discarded from your sample: a 
 silently loses 400 groups must not look like one that loses none.
 
 `detail` controls **display only**. Every `r()` return is set either way.
+
+### `if` and `in`
+
+Both restrict the sample before anything is classified, and both are applied to **your**
+data — before it is reduced to the four analysis variables — so the condition may name
+any variable in memory under its original name:
+
+```stata
+whichDIDshouldIuse y g t d if region == 1
+```
+
+`in` is applied **before** `if`, so its observation numbers refer to the data as you see
+it. (This is Stata's documented behaviour for built-in commands, where `if` and `in` both
+restrict the original data and are intersected. It is worth stating explicitly because
+`did_multiplegt_dyn` applies `if` first, and so reinterprets `in` against a dataset the
+user never saw.)
+
+**The restriction precedes the step that balances the panel**, which has a consequence
+worth knowing. Time is normalized over the periods *present in the restricted sample*, so
+a restriction that removes periods renumbers time and **moves the baseline period**.
+Baseline treatment is read at the first period, so under `if year >= 1920` a group first
+treated in 1915 has baseline 1 rather than 0, and reads as a never-switcher at that
+baseline. The design can change from `CLA` to `OTHER` for this reason alone — the correct
+answer for *that subsample*, but not the same question as the full panel.
+
+Restricting on a **group-level** variable is the clean case: whole groups leave, the
+period grid is untouched. `in` is a blunt instrument on a panel — the mid-panel holes it
+leaves are restored as missing rows and then flow into the missing-treatment rules, which
+can demote a group to a control or drop it. Run with `detail` and read `r(n_demoted)` if
+you use it.
+
+Full reasoning, with a worked trace: [`sessions/ifin_fillin_explained.pdf`](sessions/ifin_fillin_explained.pdf).
 
 ---
 

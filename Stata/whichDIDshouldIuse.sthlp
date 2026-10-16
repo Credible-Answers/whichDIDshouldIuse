@@ -2,6 +2,7 @@
 {* *! version 1  2026-10-15}{...}
 {viewerjumpto "Syntax" "whichDIDshouldIuse##syntax"}{...}
 {viewerjumpto "Description" "whichDIDshouldIuse##description"}{...}
+{viewerjumpto "The if/in sample" "whichDIDshouldIuse##ifin"}{...}
 {viewerjumpto "The designs" "whichDIDshouldIuse##designs"}{...}
 {viewerjumpto "Further detail" "whichDIDshouldIuse##detail"}{...}
 {viewerjumpto "Options" "whichDIDshouldIuse##options"}{...}
@@ -21,6 +22,7 @@
 
 {p 4 8}
 {cmd:whichDIDshouldIuse Y G T D}
+{ifin}
 [{cmd:,}
 {cmd:detail}
 {cmd:strict}]
@@ -45,13 +47,6 @@ standard-error options, because nothing is being fitted.
 {p_end}
 
 {p 4 8}
-By default the command prints the classification and nothing else. The one exception
-is a "Groups dropped ..." line, which is never suppressed when nonzero: it reports
-groups discarded from your sample, so a run that silently loses 400 groups must not
-look like one that loses none.
-{p_end}
-
-{p 4 8}
 The four variables are positional and required, in that order. You pass your own
 variable names; no pre-renaming is needed. The command runs inside
 {helpb preserve}/{cmd:restore}, so your data in memory is unchanged when it finishes.
@@ -70,21 +65,8 @@ variable names; no pre-renaming is needed. The command runs inside
 {cmd:D} is the treatment variable.
 {p_end}
 
-{p 4 8}
-Stata 14 and 15 run everything except the HAD quasi-stayer sub-case, which needs
-{help frames:frames}; below Stata 16 those panels are still classified as {cmd:HAD},
-with {cmd:r(had_case)} = {cmd:"undetermined"}.
-{p_end}
-
-
 {marker designs}{...}
 {title:The designs}
-
-{p 4 8}
-The designs {bf:nest}: CLA is a special case of SAD, which is a special case of HAD
-with quasi-stayers, which is a special case of SFSD. They are checked
-most-restrictive-first, so the design you are shown is the tightest one that holds.
-{p_end}
 
 {synoptset 10 tabbed}{...}
 {synopthdr:design}
@@ -102,6 +84,12 @@ doses. Estimator: {cmd:did_multiplegt_dyn}. Chapter 8.{p_end}
 {synopt:{cmd:OTHER}}None of the above. Section 8.5.2.{p_end}
 {synoptline}
 {p2colreset}{...}
+
+{p 4 8}
+The designs {bf:nest}: CLA is a special case of SAD, which is a special case of HAD
+with quasi-stayers, which is a special case of SFSD. They are checked
+most-restrictive-first, so the design you are shown is the tightest one that holds.
+{p_end}
 
 {dlgtab:HAD sub-cases}
 
@@ -155,6 +143,145 @@ option.{p_end}
 {cmd:r(design)} is {cmd:"SFSD"} either way.
 {p_end}
 
+{marker options}{...}
+{title:Options}
+
+{p 4 8}
+{cmd:detail} additionally prints the input echo, the panel summary, the
+missing-treatment breakdown and the full {cmd:DIAGNOSTICS} block. It may be
+abbreviated {cmd:det}. The option controls {bf:display only}: every {cmd:r()} return
+listed under {help whichDIDshouldIuse##saved_results:Saved results} is set whether or
+not it is specified.
+{p_end}
+
+{p 4 8}
+{cmd:strict} drops groups with missing treatment instead of applying the default
+repairs. It may be abbreviated {cmd:str}. See
+{help whichDIDshouldIuse##detail:Further detail} for what the two modes do and why
+running both is a useful check.
+{p_end}
+
+{p 4 8}
+{cmd:if} and {cmd:in} are not options but sample qualifiers, and they do more here than
+remove rows: because they are applied before the panel is balanced, a restriction on
+time can change the reported design. See
+{help whichDIDshouldIuse##ifin:The if/in sample}.
+{p_end}
+
+
+{marker Example}{...}
+{title:Example}{cmd:: classifying the Moser and Voena (2012) panel}
+
+{p 4 4}
+The data for this example can be downloaded by running:
+{p_end}
+
+{phang2}{stata ssc install whichDIDshouldIuse, replace}{p_end}
+{phang2}{stata net get whichDIDshouldIuse}{p_end}
+{phang2}{stata use moser_voena_didtextbook.dta, clear}{p_end}
+
+{p 4 4}
+Classifying the panel, where {cmd:patents} is the outcome, {cmd:subclass} the group,
+{cmd:year} the time period and {cmd:twea} the treatment:
+{p_end}
+
+{phang2}{stata whichDIDshouldIuse patents subclass year twea}{p_end}
+
+{p 4 4}
+The panel is reported as a classical DID design: the treatment is binary and
+absorbing, all 336 treated subclasses are first treated in 1919, and 6,912 subclasses
+are never treated.
+{p_end}
+
+{p 4 4}
+Printing the input echo, the panel summary, the missing-treatment breakdown and the
+full diagnostics block:
+{p_end}
+
+{phang2}{stata whichDIDshouldIuse patents subclass year twea, detail}{p_end}
+
+{p 4 4}
+Dropping groups with missing treatment instead of repairing them, as a check that the
+default repairs are not driving the classification:
+{p_end}
+
+{phang2}{stata whichDIDshouldIuse patents subclass year twea, strict}{p_end}
+
+{p 4 4}
+Reading the classification programmatically:
+{p_end}
+
+{phang2}{stata quietly whichDIDshouldIuse patents subclass year twea}{p_end}
+{phang2}{stata display "`r(design)' estimator `r(estimator)'"}{p_end}
+
+{p 4 4}
+For more examples, the repository contains an {cmd:examples.do} that runs the command across every
+design and sub-case:
+{browse "https://github.com/Credible-Answers/whichDIDshouldIuse"}.
+{p_end}
+
+
+{dlgtab:Non-classical designs}
+
+{p 4 4}
+The Moser and Voena panel above is a classical design. The three panels below are the
+worked examples for the other designs, one each. All three ship with the package, so the
+{cmd:net get} above has already downloaded them.
+{p_end}
+
+{p 4 8}
+{bf:Staggered adoption (SAD)} - the divorce panel of Wolfers (2006), where
+{cmd:div_rate} is the outcome, {cmd:state} the group, {cmd:year} the time period and
+{cmd:udl} the treatment:
+{p_end}
+
+{phang2}{stata use wolfers2006_didtextbook.dta, clear}{p_end}
+{phang2}{stata whichDIDshouldIuse div_rate state year udl}{p_end}
+
+{p 4 4}
+The treatment is still binary and absorbing, as in the classical case, but the 29
+switching states do not adopt together: first switches occur between 1969 and 1985. That
+variation in timing is what separates SAD from CLA.
+{p_end}
+
+{p 4 8}
+{bf:Heterogeneous adoption (HAD)} - the employment panel of Pierce and Schott. It ships
+wide, so the outcome is assembled and the panel reshaped before the command runs:
+{p_end}
+
+{phang2}{stata use pierce_schott_didtextbook.dta, clear}{p_end}
+{phang2}{stata gen lemp2001 = lemp2000 + delta2001}{p_end}
+{phang2}{stata gen lemp2002 = lemp2000 + delta2002}{p_end}
+{phang2}{stata gen lemp2004 = lemp2000 + delta2004}{p_end}
+{phang2}{stata gen lemp2005 = lemp2000 + delta2005}{p_end}
+{phang2}{stata reshape long lemp, i(indusid) j(year)}{p_end}
+{phang2}{stata replace ntrgap = 0 if year <= 2000}{p_end}
+{phang2}{stata whichDIDshouldIuse lemp indusid year ntrgap}{p_end}
+
+{p 4 4}
+Here every group is untreated at the baseline period 2000 and all 103 groups switch
+together at 2001, so there is no variation in timing at all - what varies is the dose.
+This is also the example where {cmd:r(had_case)} carries real information: no group stays
+untreated, but {cmd:did_had}'s test does not reject the null that some doses are close to
+zero (p-value 0.140), so the sub-case is {cmd:quasi-stayers} and those near-zero-dose
+groups serve as the controls. See {help whichDIDshouldIuse##designs:HAD sub-cases}.
+{p_end}
+
+{p 4 8}
+{bf:Staggered first switch (SFSD)} - the newspaper panel of Gentzkow et al., where
+{cmd:prestout} is the outcome, {cmd:cnty90} the group, {cmd:year} the time period and
+{cmd:numdailies} the treatment:
+{p_end}
+
+{phang2}{stata use gentzkowetal_didtextbook.dta, clear}{p_end}
+{phang2}{stata whichDIDshouldIuse prestout cnty90 year numdailies}{p_end}
+
+{p 4 4}
+{cmd:numdailies} is a count of newspapers, so the treatment is neither binary nor
+absorbing - counties gain and lose papers repeatedly. None of the three designs above
+applies, but groups sharing a baseline number of papers first switch at different dates,
+between 1872 and 1928, which is what SFSD requires.
+{p_end}
 
 {marker detail}{...}
 {title:Further detail}
@@ -211,6 +338,13 @@ classification.
 {p_end}
 
 {p 4 8}
+By default the command prints the classification and nothing else. The one exception
+is a "Groups dropped ..." line, which is never suppressed when nonzero: it reports
+groups discarded from your sample, so a run that silently loses 400 groups must not
+look like one that loses none.
+{p_end}
+
+{p 4 8}
 {cmd:When demotion changes the classification} - Demotion is the one default repair
 that can change the answer. A group is demoted to a control when its treatment is
 still missing in the period immediately before its first apparent switch: the switch
@@ -246,141 +380,35 @@ itself, and fill in known pre-period zeros rather than leaving them missing.
 {cmd:display r(n_demoted) " of " r(n_demoted)+r(n_switchers) " apparent switchers were demoted"}
 {p_end}
 
-
-{marker options}{...}
-{title:Options}
-
-{p 4 8}
-{cmd:detail} additionally prints the input echo, the panel summary, the
-missing-treatment breakdown and the full {cmd:DIAGNOSTICS} block. It may be
-abbreviated {cmd:det}. The option controls {bf:display only}: every {cmd:r()} return
-listed under {help whichDIDshouldIuse##saved_results:Saved results} is set whether or
-not it is specified.
-{p_end}
-
-{p 4 8}
-{cmd:strict} drops groups with missing treatment instead of applying the default
-repairs. It may be abbreviated {cmd:str}. See
-{help whichDIDshouldIuse##detail:Further detail} for what the two modes do and why
-running both is a useful check.
-{p_end}
-
-
-{marker Example}{...}
-{title:Example}{cmd:: classifying the Moser and Voena (2012) panel}
-
-{p 4 4}
-The data for this example can be downloaded by running:
-{p_end}
-
-{phang2}{stata ssc install whichDIDshouldIuse, replace}{p_end}
-{phang2}{stata net get whichDIDshouldIuse}{p_end}
-{phang2}{stata use moser_voena_didtextbook.dta, clear}{p_end}
-
-{p 4 4}
-Classifying the panel, where {cmd:patents} is the outcome, {cmd:subclass} the group,
-{cmd:year} the time period and {cmd:twea} the treatment:
-{p_end}
-
-{phang2}{stata whichDIDshouldIuse patents subclass year twea}{p_end}
-
-{p 4 4}
-The panel is reported as a classical DID design: the treatment is binary and
-absorbing, all 336 treated subclasses are first treated in 1919, and 6,912 subclasses
-are never treated.
-{p_end}
-
-{p 4 4}
-Printing the input echo, the panel summary, the missing-treatment breakdown and the
-full diagnostics block:
-{p_end}
-
-{phang2}{stata whichDIDshouldIuse patents subclass year twea, detail}{p_end}
-
-{p 4 4}
-Dropping groups with missing treatment instead of repairing them, as a check that the
-default repairs are not driving the classification:
-{p_end}
-
-{phang2}{stata whichDIDshouldIuse patents subclass year twea, strict}{p_end}
-
-{p 4 4}
-Reading the classification programmatically:
-{p_end}
-
-{phang2}{stata quietly whichDIDshouldIuse patents subclass year twea}{p_end}
-{phang2}{stata display "`r(design)' estimator `r(estimator)'"}{p_end}
-
-
-{marker FAQ}{...}
-{title:FAQ}
-
-{p 4 4}
-{it:Can I keep the dropped-group warnings but hide the classification report?}
-{p_end}
-
-{p 4 4}
-No. {cmd:quietly} suppresses the report {it:and} the dropped-group warnings, and
-there is no middle setting. Every {cmd:r()} return is set regardless, so a loop over
-datasets can print one line each:
-{p_end}
-
-{p 8 8}
-{cmd:foreach f in paper1 paper2 paper3 {c -(}}{break}
-{space 8}{cmd:use "`f'.dta", clear}{break}
-{space 8}{cmd:quietly whichDIDshouldIuse y g year d}{break}
-{space 8}{cmd:display "`f'" " " r(design)}{break}
-{cmd:{c )-}}
-{p_end}
-
-{p 4 4}
-{it:Why are there no fixed-effect, weight or standard-error options?}
-{p_end}
-
-{p 4 4}
-Because nothing is being fitted. The command reads the structure of your panel and
-names a design and an estimator; you then run that estimator yourself, with whatever
-specification it calls for.
-{p_end}
-
-{p 4 4}
-{it:Are there more worked examples?}
-{p_end}
-
-{p 4 4}
-Yes. The repository contains an {cmd:examples.do} that runs the command on fourteen
-panels covering every design and sub-case:
-{browse "https://github.com/Credible-Answers/whichDIDshouldIuse"}.
-{p_end}
-
-
 {title:References}
 
 {p 4 8}
-de Chaisemartin, C. and D'Haultfoeuille, X.
-{it:Difference-in-Differences for Policy Evaluation.} Chapters 3, 6, 7 and 8.
+de Chaisemartin, C. and D'Haultfoeuille, X. (2026).
+{it:Causal Inference with Differences-in-Differences: Credible Answers to Hard Questions.} Princeton University Press.
 {p_end}
 
 {p 4 8}
-If your panel is HAD without stayers, the sub-case is decided by {cmd:did_had}'s
-quasi-untreated test, so cite that package as its authors request:
+Moser, P. and Voena, A. (2012).
+{browse "https://doi.org/10.3886/E112497V1":Replication data for "Compulsory Licensing: Evidence from the Trading with the Enemy Act"}.
+Nashville, TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for Political and Social Research.
 {p_end}
 
 {p 4 8}
-de Chaisemartin, C., Ciccia, D., D'Haultfoeuille, X. and Knau, F. (2025).
-{browse "https://arxiv.org/abs/2405.04465":Difference-in-Differences Estimators When No Unit Remains Untreated}.
+Wolfers, J. (2006).
+{browse "https://doi.org/10.3886/E116250V1":Replication data for "Did Unilateral Divorce Laws Raise Divorce Rates? A Reconciliation and New Results"}.
+Nashville, TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for Political and Social Research.
 {p_end}
 
 {p 4 8}
-Calonico, S., Cattaneo, M. D. and Farrell, M. H. (2019).
-{browse "https://nppackages.github.io/references/Calonico-Cattaneo-Farrell_2019_JSS.pdf":nprobust: Nonparametric Kernel-Based Estimation and Robust Bias-Corrected Inference}.
-Journal of Statistical Software, 91(8): 1-33.
+Gentzkow, M., Shapiro, J. M. and Sinkinson, M. (2011).
+{browse "https://doi.org/10.3886/E112472V1":Replication data for "The Effect of Newspaper Entry and Exit on Electoral Politics"}.
+Nashville, TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for Political and Social Research.
 {p_end}
 
 {p 4 8}
-Calonico, S., Cattaneo, M. D. and Farrell, M. H. (2018).
-On the Effect of Bias Estimation on Coverage Accuracy in Nonparametric Inference.
-Journal of the American Statistical Association, 113(522): 767-779.
+Pierce, J. R. and Schott, P. K. (2016).
+{browse "https://doi.org/10.3886/E112965V1":Replication data for "The Surprisingly Swift Decline of US Manufacturing Employment"}.
+Nashville, TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for Political and Social Research.
 {p_end}
 
 
@@ -397,7 +425,9 @@ install any of these yourself: the command installs what is missing on first use
 {title:Author}
 
 {p 4 4}
-Alberto Trelles, Universidad del Pacifico, Peru.
+Alberto Trelles, SciencesPo, France.{break}
+Clément de Chaisemartin, Economics Department, Sciences Po, France.{break}
+Anzony Quispe, Brown University, USA.
 {p_end}
 
 
@@ -405,7 +435,7 @@ Alberto Trelles, Universidad del Pacifico, Peru.
 
 {p 4 4}
 Mail:
-{browse "mailto:albertotrellesd@gmail.com":albertotrellesd@gmail.com}
+{browse "mailto:chaisemartin.packages@gmail.com":chaisemartin.packages@gmail.com}
 {p_end}
 
 {p 4 4}
