@@ -6,6 +6,8 @@ d because did_had is run inside a frame; below that it reports "undetermined".
 d Dependencies (installed automatically on first use): distinct, and for
 d HAD panels without stayers did_had, lprobust (nprobust) and gtools.
 d
-d Distribution-Date: 20261012
+d Distribution-Date: 20261015
 d
 f whichDIDshouldIuse.ado
+f whichDIDshouldIuse.sthlp
+f moser_voena_didtextbook.dta
