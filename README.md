@@ -1,6 +1,6 @@
 # whichDIDshouldIuse
 
-[![Stata](https://img.shields.io/badge/Stata-16%2B-blue)](https://www.stata.com/)
+[![Stata](https://img.shields.io/badge/Stata-14%2B-blue)](https://www.stata.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **Tell me which difference-in-differences design my panel is, and which estimator to use.**
