@@ -1,4 +1,4 @@
-*! whichDIDshouldIuse 1.0.0  12oct2026
+*! whichDIDshouldIuse 1.0.0  16oct2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with a less strict
 *! default for missing treatment and a strict option.
 
@@ -250,7 +250,7 @@ program define whichDIDshouldIuse, rclass
         * keeps a clean panel's default output down to the verdict alone.
         if (n_dropped_baseline > 0) {
             di as text "Groups dropped for missing baseline (d at t=1, cal " ///
-               as result %4.0f cal_min as text "): " as result n_dropped_baseline ///
+               as result cal_min as text "): " as result n_dropped_baseline ///
                as text "  (" as result n_groups_raw as text " -> " ///
                as result n_groups_baseline as text ")"
         }
@@ -729,7 +729,7 @@ program define whichDIDshouldIuse, rclass
         di as text    "{hline 70}"
         di as text    "  Binary and absorbing treatment, no variation in treatment"
         di as text    "  timing: all " n_switchers " treated group(s) experience treatment at"
-        di as text    "  t=" %4.0f common_switch_cal " (period " %2.0f common_switch_t "), and " n_never_treated " group(s) never switch."
+        di as text    "  t=" common_switch_cal " (period " common_switch_t "), and " n_never_treated " group(s) never switch."
         di as text    ""
         di as text    "  Estimator: `estimator'"
         di as text    ""
@@ -741,7 +741,7 @@ program define whichDIDshouldIuse, rclass
         di as text    "{hline 70}"
         di as text    "  Binary and absorbing treatment, with variation in treatment"
         di as text    "  timing across the " n_switchers " switching group(s): first switches"
-        di as text    "  occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    "  occur between t=" first_switch_cal " and t=" last_switch_cal "."
         di as text    ""
         di as text    "  Estimator: `estimator'"
         di as text    ""
@@ -750,14 +750,14 @@ program define whichDIDshouldIuse, rclass
     else if ("`design'" == "HAD") {
         di as result "  DESIGN: Heterogeneous Adoption Design (HAD)"
         di as text    "{hline 70}"
-        di as text    "  All groups untreated at baseline (t=" %4.0f cal_min "); all " n_switchers " treated"
-        di as text    "  group(s) experience treatment at t=" %4.0f common_switch_cal ", but the treatment dose varies"
+        di as text    "  All groups untreated at baseline (t=" cal_min "); all " n_switchers " treated"
+        di as text    "  group(s) experience treatment at t=" common_switch_cal ", but the treatment dose varies"
         di as text    "  across treated groups."
         di as text    ""
 		
         if ("`had_case'" == "stayers") {
             di as text "  Sub-case: " as result "stayers" as text " -- " as result n_stayers ///
-               as text " group(s) stay untreated at t=" as result %4.0f common_switch_cal ///
+               as text " group(s) stay untreated at t=" as result common_switch_cal ///
                as text "."
             di as text ""
             di as text "  ATT and WATT are identified; they can be estimated at the usual"
@@ -828,7 +828,7 @@ program define whichDIDshouldIuse, rclass
         di as text    "  is a staggered first switch design: some groups experience their"
         di as text    "  first treatment switch at different dates."
         di as text    ""
-        di as text    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    "  First switches occur between t=" first_switch_cal " and t=" last_switch_cal "."
         di as text    ""
         di as text    "  Estimator: `estimator'"
         di as text    ""
@@ -848,7 +848,7 @@ program define whichDIDshouldIuse, rclass
         di as text    "  baseline treatment but experience their first treatment switch at"
         di as text    "  different dates."
         di as text    ""
-        di as text    "  First switches occur between t=" %4.0f first_switch_cal " and t=" %4.0f last_switch_cal "."
+        di as text    "  First switches occur between t=" first_switch_cal " and t=" last_switch_cal "."
         di as text    ""
         di as text    "  Estimator: `estimator'"
         di as text    ""
@@ -951,11 +951,11 @@ program define whichDIDshouldIuse, rclass
         else                  di as text "  missing treatment: default (less strict)"
         di as text    "{hline 70}"
 
-        di as text _n "Panel: " as result %4.0f Tmax ///
-           as text " periods, calendar " as result %4.0f cal_min ///
-           as text " .. " as result %4.0f cal_max
-        di as text    "       (t normalized to 1.." as result %4.0f Tmax ///
-           as text "; never-switcher sentinel = " as result %4.0f Tplus1 as text ")"
+        di as text _n "Panel: " as result Tmax ///
+           as text " periods, calendar " as result cal_min ///
+           as text " .. " as result cal_max
+        di as text    "       (t normalized to 1.." as result Tmax ///
+           as text "; never-switcher sentinel = " as result Tplus1 as text ")"
 
         * Sample changes. Above the report these print only when nonzero, so
         * repeat them here unconditionally: under -detail- the full accounting
@@ -963,7 +963,7 @@ program define whichDIDshouldIuse, rclass
         di as text _n "Groups dropped:"
         if ("`strict'" != "") {
             di as text "  missing baseline (d at t=1, cal " ///
-               as result %4.0f cal_min as text "):          " ///
+               as result cal_min as text "):          " ///
                as result n_dropped_baseline
             di as text "  pre-treatment violations:              " ///
                as result n_dropped_pretreat
@@ -997,10 +997,10 @@ program define whichDIDshouldIuse, rclass
         di as text    "  any_switchers        = " as result any_switchers
         di as text    "  same_Fg              = " as result same_Fg ///
            as text    "   (sd(Fg|switchers) = " as result sd_Fg_value as text ")"
-        di as text    "  switch periods (t)   = " as result %2.0f first_switch_t ///
-           as text    " .. " as result %2.0f last_switch_t
-        di as text    "  switch dates (t_cal) = " as result %4.0f first_switch_cal ///
-           as text    " .. " as result %4.0f last_switch_cal
+        di as text    "  switch periods (t)   = " as result first_switch_t ///
+           as text    " .. " as result last_switch_t
+        di as text    "  switch dates (t_cal) = " as result first_switch_cal ///
+           as text    " .. " as result last_switch_cal
         di as text    "  is_binary            = " as result is_binary ///
            as text    "   (d in {" as result d_min as text ", " as result d_max as text "})"
         di as text    "  is_binary01          = " as result is_binary01
@@ -1059,6 +1059,7 @@ program define whichDIDshouldIuse, rclass
     * HAD sub-case. had_case is empty unless the design is HAD; the qs_*
     * scalars are missing unless did_had's test was run.
     return local  had_case             "`had_case'"
+    return local  had_why              "`had_why'"
     return scalar nonneg_dose          = nonneg_dose
     return scalar n_stayers            = n_stayers
     return scalar had_d_min            = had_d_min
