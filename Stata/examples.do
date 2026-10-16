@@ -228,7 +228,7 @@ whichDIDshouldIuse 	  y   g   t   d, detail
 
 
 // --------------------------------------------------------------------------- //
-// -- (4) OTHER: none of the four designs								-- //
+// -- (4) OTHER: none of the four designs									-- //
 // --------------------------------------------------------------------------- //
 
 *--- 4a) Non-absorbing, common switch date ---*

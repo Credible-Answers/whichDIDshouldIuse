@@ -10,12 +10,19 @@
   reproduces the original drop-on-any-missing rules exactly.
 
   SYNTAX
-    whichDIDshouldIuse Y G T D [, detail strict]
+    whichDIDshouldIuse Y G T D [if] [in] [, detail strict]
       Y  outcome
       G  group identifier
       T  the user's CALENDAR time variable (year, quarter, ...)
       D  treatment
 
+    if/in  restrict the sample. Applied to the CALLER's data, before the
+           panel is reduced to the four analysis variables, so the condition
+           may name any variable in the data under its original name. -in-
+           is applied BEFORE -if- so its row numbers mean what the user saw
+           (see section 0a). The restriction also precedes -fillin-, so one
+           that removes periods renumbers t and MOVES the baseline period:
+           see sessions/ifin_fillin_explained.pdf.
     detail  also print the input echo, the panel summary and the full
             DIAGNOSTICS block.
     strict  handle missing treatment by dropping groups (see MISSING
@@ -135,7 +142,7 @@
 
 program define whichDIDshouldIuse, rclass
     version 14
-    syntax varlist(min=4 max=4 numeric) [, DETail STRict]
+    syntax varlist(min=4 max=4 numeric) [if] [in] [, DETail STRict]
 
     * ---------------------------------------------------------------------- *
     * 0. Dependency. distinct is used on every path, so it is checked before
@@ -171,6 +178,49 @@ program define whichDIDshouldIuse, rclass
     * the report, so the classification comes first.
 
     preserve
+
+    * ---------------------------------------------------------------------- *
+    * 0a. The if/in sample
+    *
+    *    Applied HERE -- after -preserve-, before the -keep- below -- so the
+    *    condition may name any variable in the caller's data, under its
+    *    original name, and -in- row numbers refer to the caller's own data
+    *    order. Both go through -keep-, as did_multiplegt_dyn does, rather
+    *    than a -touse- tempvar: the -keep- on the next line would delete a
+    *    tempvar anyway, and adding one to that -keep- would put a variable
+    *    back into the dataset, which is exactly what the shadowing note
+    *    below warns against.
+    *
+    *    -in- FIRST, then -if-. -keep- renumbers the rows it keeps, so
+    *    -if- first would make the user's row numbers refer to a dataset they
+    *    never saw. Stata's own semantics are that if and in both restrict
+    *    the ORIGINAL data and are intersected -- what -marksample- gives
+    *    every built-in -- and only this order reproduces that.
+    *
+    *    NOTE: did_multiplegt_dyn applies -if- first. That is a latent bug,
+    *    not a convention to copy; it only hides because the two qualifiers
+    *    are rarely combined. Do not "fix" this back.
+    *    Reasoning in full: sessions/ifin_fillin_explained.pdf
+    * ---------------------------------------------------------------------- *
+
+    if ("`in'" != "") qui keep `in'
+    if ("`if'" != "") qui keep `if'
+
+    * An if/in that empties the data is a genuine error -- there is no panel
+    * left to classify. Caught here because the failure would otherwise
+    * surface far from its cause: -fillin- on an empty dataset leaves Tmax
+    * missing, and the -forvalues k = 1/.- in section 1 then silently does
+    * not execute.
+    * Restore varabbrev before exiting: this is the only early exit AFTER
+    * -set varabbrev off- (line above section 0a), and the restore at the foot
+    * of the program is unreachable from here, so without this the caller's
+    * session is left with abbreviation silently switched off.
+    * -preserve- unwinds on its own.
+    if (_N == 0) {
+        set varabbrev `varabbrev_was'
+        di as error "no observations; the if/in condition selected nothing"
+        exit 2000
+    }
 
     * LOAD-BEARING: bare scalar names resolve to a VARIABLE first, so no
     * caller variable may survive to shadow one.
@@ -947,6 +997,12 @@ program define whichDIDshouldIuse, rclass
                       as text "  G=" as result "`Gvar'" ///
                       as text "  T=" as result "`Tvar'" ///
                       as text "  D=" as result "`Dvar'"
+        * Compound double quotes throughout: an if condition can itself
+        * contain " (if a caller variable is a string), which would otherwise
+        * close the local's expansion early and break the -di-.
+        if (`"`if'`in'"' != "") {
+            di as text "  sample: " as result `"`if' `in'"'
+        }
         if ("`strict'" != "") di as text "  missing treatment: strict"
         else                  di as text "  missing treatment: default (less strict)"
         di as text    "{hline 70}"
