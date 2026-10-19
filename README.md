@@ -1,4 +1,4 @@
-# whichDIDshouldIuse
+# whichdidshouldiuse
 
 [![Stata](https://img.shields.io/badge/Stata-14%2B-blue)](https://www.stata.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -16,8 +16,8 @@ Stata 14 and 15 run everything except the HAD quasi-stayer sub-case, which needs
 below 16 those panels are still classified as HAD, with `r(had_case) = "undetermined"`.
 
 ```stata
-use "moser_voena.dta", clear
-whichDIDshouldIuse patents subclass year twea
+use "moser_voena_didtextbook.dta", clear
+whichdidshouldiuse patents subclass year twea
 ```
 
 ```
@@ -40,11 +40,44 @@ whichDIDshouldIuse patents subclass year twea
 ## Installation
 
 ```stata
-net install whichDIDshouldIuse, ///
+ssc install whichdidshouldiuse, replace
+```
+
+Or install straight from this repository:
+
+```stata
+net install whichdidshouldiuse, replace ///
     from("https://raw.githubusercontent.com/Credible-Answers/whichDIDshouldIuse/main/Stata")
 ```
 
-Add `, replace` to upgrade an existing install.
+Either way, `replace` upgrades an existing install.
+
+### The example datasets
+
+The command and its help file are all you need to run `whichdidshouldiuse` on your own
+data. The four textbook panels used in the help file's examples ship with the package as
+**ancillary files**, which Stata does not install automatically — ask for them
+explicitly, and they land in your current working directory:
+
+```stata
+net get whichdidshouldiuse, replace
+```
+
+That delivers:
+
+| File | Panel | Design |
+|---|---|---|
+| `moser_voena_didtextbook.dta` | Moser–Voena (2012), patents | `CLA` |
+| `wolfers2006_didtextbook.dta` | Wolfers (2006), divorce rates | `SAD` |
+| `pierce_schott_didtextbook.dta` | Pierce–Schott, employment (ships **wide**) | `HAD`, quasi-stayers |
+| `gentzkowetal_didtextbook.dta` | Gentzkow et al., newspapers | `SFSD` |
+
+With those in place, every example in `help whichdidshouldiuse` runs as written:
+
+```stata
+use moser_voena_didtextbook.dta, clear
+whichdidshouldiuse patents subclass year twea
+```
 
 **Dependency:** `distinct` (SSC). HAD panels without stayers additionally use `did_had`,
 `lprobust` (in `nprobust`) and `gtools`. You do not need to install any of these
@@ -72,7 +105,7 @@ no error, no warning.
 ## Syntax
 
 ```stata
-whichDIDshouldIuse Y G T D [if] [in] [, detail strict]
+whichdidshouldiuse Y G T D [if] [in] [, detail strict]
 ```
 
 | Argument | Meaning |
@@ -104,7 +137,7 @@ data — before it is reduced to the four analysis variables — so the conditio
 any variable in memory under its original name:
 
 ```stata
-whichDIDshouldIuse y g t d if region == 1
+whichdidshouldiuse y g t d if region == 1
 ```
 
 `in` is applied **before** `if`, so its observation numbers refer to the data as you see
@@ -126,8 +159,6 @@ period grid is untouched. `in` is a blunt instrument on a panel — the mid-pane
 leaves are restored as missing rows and then flow into the missing-treatment rules, which
 can demote a group to a control or drop it. Run with `detail` and read `r(n_demoted)` if
 you use it.
-
-Full reasoning, with a worked trace: [`sessions/ifin_fillin_explained.pdf`](sessions/ifin_fillin_explained.pdf).
 
 ---
 
@@ -158,7 +189,7 @@ switch date — which decides what is identified:
 
 The quasi-stayer test is `did_had`'s own. `did_had` itself runs on Stata 12+, but
 **this command needs Stata 16 or later to reach that sub-case**: `did_had` calls
-`preserve`, which cannot nest inside the one `whichDIDshouldIuse` already holds, so it
+`preserve`, which cannot nest inside the one `whichdidshouldiuse` already holds, so it
 is run inside a [frame](https://www.stata.com/features/overview/multiple-datasets-in-memory/)
 — and frames arrived in Stata 16. On Stata 14 or 15 the design is still reported as HAD,
 with `r(had_case) = "undetermined"`. Any other failure yields `undetermined` too, rather
@@ -225,7 +256,7 @@ two report a *different design* with no error.
 **How to check.** `r(n_switchers)` counts switchers *after* demotion, so:
 
 ```stata
-whichDIDshouldIuse Y G T D, detail
+whichdidshouldiuse Y G T D, detail
 if !missing(r(n_demoted)) {
     local looked_like = r(n_switchers) + r(n_demoted)
     di "demoted: " r(n_demoted) " of " `looked_like' " apparent switchers"
@@ -240,7 +271,7 @@ the repairs are not driving the answer.
 
 ## Returned values
 
-`whichDIDshouldIuse` is `rclass`. Read `r()` **immediately** — the next command that
+`whichdidshouldiuse` is `rclass`. Read `r()` **immediately** — the next command that
 returns `r()` results wipes it.
 
 ### The answer
@@ -331,7 +362,7 @@ Each is a count of groups affected. `.` means "not assessed in this mode", not z
 ```stata
 foreach f in paper1 paper2 paper3 {
     use "`f'.dta", clear
-    quietly whichDIDshouldIuse y g year d
+    quietly whichdidshouldiuse y g year d
     di "`f': " r(design) "  (estimator: " r(estimator) ")"
 }
 ```
@@ -344,9 +375,10 @@ keeps the warnings but hides the report.
 
 ## Worked examples
 
-`Stata/examples.do` runs the command on fourteen panels covering every design and
-sub-case. Run it from `Stata/`, since it loads the bundled panels via `../data/`; it
-writes `examples.log` beside itself.
+[`Stata/examples.do`](Stata/examples.do) runs the command fourteen times across every
+design and sub-case. **It is repo-only** — it is not part of the installed package, so
+clone or download this repository to use it. Run it from `Stata/`, since it loads its
+panels via `../data/`; it writes `examples.log` beside itself.
 
 | Section | Panel | Result |
 |---|---|---|
@@ -358,8 +390,25 @@ writes `examples.log` beside itself.
 | 3 | Synthetic | `HAD`, all four sub-cases |
 | 4 | Synthetic | `OTHER` |
 
-The panels in `data/` are the textbook's own examples. Pierce–Schott ships **wide** and
-is reshaped inside the do-file, following the textbook's prep.
+Each block is labelled with the design it is expected to return, so a regression shows up
+as a mismatch when reading the log.
+
+Pierce–Schott ships **wide** and is reshaped inside the do-file, following the textbook's
+prep. Sections 3 and 4 build their panels inline, so they need no data files at all.
+
+### Where the data lives
+
+Two copies of the four textbook panels are in this repository, and they are not
+interchangeable:
+
+| Location | Contents | Ships to users? |
+|---|---|---|
+| [`Stata/`](Stata/) | The four textbook panels, trimmed to the variables the examples use | **Yes** — declared as ancillary files in `whichdidshouldiuse.pkg`, retrieved with `net get` |
+| [`data/`](data/) | The same four panels at full size, plus `had_data1.dta` and `had_data2.dta` (the two HAD panels from the `did_had` repository, used by section 3) | No — repo-only |
+
+`examples.do` reads from `data/` because it needs `had_data1`/`had_data2`, which are not
+part of the package. The trimmed copies in `Stata/` are what `net get` delivers, and they
+reproduce the same classification for every example in the help file.
 
 ---
 

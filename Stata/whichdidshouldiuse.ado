@@ -1,16 +1,16 @@
-*! whichDIDshouldIuse 1.0.0  16oct2026
+*! whichdidshouldiuse 1.0.0  19oct2026
 *! Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with a less strict
 *! default for missing treatment and a strict option.
 
 /*==============================================================================
-  whichDIDshouldIuse.ado
+  whichdidshouldiuse.ado
 
   Classify a (Y, G, T, D) panel as CLA, SAD, HAD, or SFSD, with two modes for
   handling missing treatment: a less strict default, and a strict option that
   reproduces the original drop-on-any-missing rules exactly.
 
   SYNTAX
-    whichDIDshouldIuse Y G T D [if] [in] [, detail strict]
+    whichdidshouldiuse Y G T D [if] [in] [, detail strict]
       Y  outcome
       G  group identifier
       T  the user's CALENDAR time variable (year, quarter, ...)
@@ -140,7 +140,7 @@
            on this, so Fg-1 is always a real period.
 ==============================================================================*/
 
-program define whichDIDshouldIuse, rclass
+program define whichdidshouldiuse, rclass
     version 14
     syntax varlist(min=4 max=4 numeric) [if] [in] [, DETail STRict]
 
@@ -157,7 +157,7 @@ program define whichDIDshouldIuse, rclass
         capture noisily ssc install distinct, replace
         qui capture which distinct
         if (_rc) {
-            di as error "whichDIDshouldIuse requires distinct, and it could not be installed."
+            di as error "whichdidshouldiuse requires distinct, and it could not be installed."
             di as error "Install it by hand with:  ssc install distinct"
             exit 601
         }
@@ -576,7 +576,7 @@ program define whichDIDshouldIuse, rclass
     *
     * The max cannot be the earliest switcher itself (its Fg_trunc = Fg), so
     * this is a pair. When Fg_trunc == Fg (strict mode) it holds exactly when
-    * sd(Fg) > 0 within the cell -- the test whichDIDshouldIuse uses. A cell
+    * sd(Fg) > 0 within the cell -- the test whichdidshouldiuse uses. A cell
     * with no switchers carries no pair (sfsd_cell missing).
     cap drop Fg_sw_temp min_Fg_sw_cell Fg_trunc_temp max_Fg_trunc_cell sfsd_cell
     qui gen    Fg_sw_temp = Fg if first_g & Fg < Tplus1
@@ -993,7 +993,7 @@ program define whichDIDshouldIuse, rclass
 
     if ("`detail'" != "") {
         di as text _n "{hline 70}"
-        di as text    "  whichDIDshouldIuse:  Y=" as result "`Yvar'" ///
+        di as text    "  whichdidshouldiuse:  Y=" as result "`Yvar'" ///
                       as text "  G=" as result "`Gvar'" ///
                       as text "  T=" as result "`Tvar'" ///
                       as text "  D=" as result "`Dvar'"
