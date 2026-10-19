@@ -1,19 +1,19 @@
 {smcl}
-{* *! version 1  2026-10-15}{...}
-{viewerjumpto "Syntax" "whichDIDshouldIuse##syntax"}{...}
-{viewerjumpto "Description" "whichDIDshouldIuse##description"}{...}
-{viewerjumpto "The if/in sample" "whichDIDshouldIuse##ifin"}{...}
-{viewerjumpto "The designs" "whichDIDshouldIuse##designs"}{...}
-{viewerjumpto "Further detail" "whichDIDshouldIuse##detail"}{...}
-{viewerjumpto "Options" "whichDIDshouldIuse##options"}{...}
-{viewerjumpto "Example" "whichDIDshouldIuse##Example"}{...}
-{viewerjumpto "FAQ" "whichDIDshouldIuse##FAQ"}{...}
-{viewerjumpto "Saved results" "whichDIDshouldIuse##saved_results"}{...}
+{* *! version 1  2026-10-19}{...}
+{viewerjumpto "Syntax" "whichdidshouldiuse##syntax"}{...}
+{viewerjumpto "Description" "whichdidshouldiuse##description"}{...}
+{viewerjumpto "The if/in sample" "whichdidshouldiuse##ifin"}{...}
+{viewerjumpto "The designs" "whichdidshouldiuse##designs"}{...}
+{viewerjumpto "Further detail" "whichdidshouldiuse##detail"}{...}
+{viewerjumpto "Options" "whichdidshouldiuse##options"}{...}
+{viewerjumpto "Example" "whichdidshouldiuse##Example"}{...}
+{viewerjumpto "FAQ" "whichdidshouldiuse##FAQ"}{...}
+{viewerjumpto "Saved results" "whichdidshouldiuse##saved_results"}{...}
 
 {title:Title}
 
 {p 4 8}
-{cmd:whichDIDshouldIuse} {hline 2} Classify a panel's difference-in-differences design
+{cmd:whichdidshouldiuse} {hline 2} Classify a panel's difference-in-differences design
 {p_end}
 
 
@@ -21,7 +21,7 @@
 {title:Syntax}
 
 {p 4 8}
-{cmd:whichDIDshouldIuse Y G T D}
+{cmd:whichdidshouldiuse Y G T D}
 {ifin}
 [{cmd:,}
 {cmd:detail}
@@ -35,7 +35,7 @@
 {title:Description}
 
 {p 4 8}
-{cmd:whichDIDshouldIuse} reads a panel and classifies its difference-in-differences
+{cmd:whichdidshouldiuse} reads a panel and classifies its difference-in-differences
 {it:design} as {cmd:CLA}, {cmd:SAD}, {cmd:HAD}, {cmd:SFSD} or {cmd:OTHER}, names a
 suitable estimator, and points you at the relevant chapter of Clement de Chaisemartin
 and Xavier D'Haultfoeuille's difference-in-differences textbook.
@@ -119,7 +119,7 @@ The design is still HAD {c -} only the sub-case is unknown.{p_end}
 {p 4 8}
 The quasi-stayer test is {cmd:did_had}'s own, read from {cmd:e(estimates)}. Reaching
 this sub-case {bf:requires Stata 16 or later}: {cmd:did_had} calls {helpb preserve},
-which cannot nest inside the one {cmd:whichDIDshouldIuse} already holds, so it is run
+which cannot nest inside the one {cmd:whichdidshouldiuse} already holds, so it is run
 inside a {help frames:frame}, and frames arrived in Stata 16. Any other failure yields
 {cmd:undetermined} too, rather than an error.
 {p_end}
@@ -150,14 +150,14 @@ option.{p_end}
 {cmd:detail} additionally prints the input echo, the panel summary, the
 missing-treatment breakdown and the full {cmd:DIAGNOSTICS} block. It may be
 abbreviated {cmd:det}. The option controls {bf:display only}: every {cmd:r()} return
-listed under {help whichDIDshouldIuse##saved_results:Saved results} is set whether or
+listed under {help whichdidshouldiuse##saved_results:Saved results} is set whether or
 not it is specified.
 {p_end}
 
 {p 4 8}
 {cmd:strict} drops groups with missing treatment instead of applying the default
 repairs. It may be abbreviated {cmd:str}. See
-{help whichDIDshouldIuse##detail:Further detail} for what the two modes do and why
+{help whichdidshouldiuse##detail:Further detail} for what the two modes do and why
 running both is a useful check.
 {p_end}
 
@@ -165,7 +165,7 @@ running both is a useful check.
 {cmd:if} and {cmd:in} are not options but sample qualifiers, and they do more here than
 remove rows: because they are applied before the panel is balanced, a restriction on
 time can change the reported design. See
-{help whichDIDshouldIuse##ifin:The if/in sample}.
+{help whichdidshouldiuse##ifin:The if/in sample}.
 {p_end}
 
 
@@ -176,8 +176,8 @@ time can change the reported design. See
 The data for this example can be downloaded by running:
 {p_end}
 
-{phang2}{stata ssc install whichDIDshouldIuse, replace}{p_end}
-{phang2}{stata net get whichDIDshouldIuse}{p_end}
+{phang2}{stata ssc install whichdidshouldiuse, replace}{p_end}
+{phang2}{stata net get whichdidshouldiuse}{p_end}
 {phang2}{stata use moser_voena_didtextbook.dta, clear}{p_end}
 
 {p 4 4}
@@ -185,7 +185,7 @@ Classifying the panel, where {cmd:patents} is the outcome, {cmd:subclass} the gr
 {cmd:year} the time period and {cmd:twea} the treatment:
 {p_end}
 
-{phang2}{stata whichDIDshouldIuse patents subclass year twea}{p_end}
+{phang2}{stata whichdidshouldiuse patents subclass year twea}{p_end}
 
 {p 4 4}
 The panel is reported as a classical DID design: the treatment is binary and
@@ -198,20 +198,20 @@ Printing the input echo, the panel summary, the missing-treatment breakdown and 
 full diagnostics block:
 {p_end}
 
-{phang2}{stata whichDIDshouldIuse patents subclass year twea, detail}{p_end}
+{phang2}{stata whichdidshouldiuse patents subclass year twea, detail}{p_end}
 
 {p 4 4}
 Dropping groups with missing treatment instead of repairing them, as a check that the
 default repairs are not driving the classification:
 {p_end}
 
-{phang2}{stata whichDIDshouldIuse patents subclass year twea, strict}{p_end}
+{phang2}{stata whichdidshouldiuse patents subclass year twea, strict}{p_end}
 
 {p 4 4}
 Reading the classification programmatically:
 {p_end}
 
-{phang2}{stata quietly whichDIDshouldIuse patents subclass year twea}{p_end}
+{phang2}{stata quietly whichdidshouldiuse patents subclass year twea}{p_end}
 {phang2}{stata display "`r(design)' estimator `r(estimator)'"}{p_end}
 
 {p 4 4}
@@ -236,7 +236,7 @@ worked examples for the other designs, one each. All three ship with the package
 {p_end}
 
 {phang2}{stata use wolfers2006_didtextbook.dta, clear}{p_end}
-{phang2}{stata whichDIDshouldIuse div_rate state year udl}{p_end}
+{phang2}{stata whichdidshouldiuse div_rate state year udl}{p_end}
 
 {p 4 4}
 The treatment is still binary and absorbing, as in the classical case, but the 29
@@ -256,7 +256,7 @@ wide, so the outcome is assembled and the panel reshaped before the command runs
 {phang2}{stata gen lemp2005 = lemp2000 + delta2005}{p_end}
 {phang2}{stata reshape long lemp, i(indusid) j(year)}{p_end}
 {phang2}{stata replace ntrgap = 0 if year <= 2000}{p_end}
-{phang2}{stata whichDIDshouldIuse lemp indusid year ntrgap}{p_end}
+{phang2}{stata whichdidshouldiuse lemp indusid year ntrgap}{p_end}
 
 {p 4 4}
 Here every group is untreated at the baseline period 2000 and all 103 groups switch
@@ -264,7 +264,7 @@ together at 2001, so there is no variation in timing at all - what varies is the
 This is also the example where {cmd:r(had_case)} carries real information: no group stays
 untreated, but {cmd:did_had}'s test does not reject the null that some doses are close to
 zero (p-value 0.140), so the sub-case is {cmd:quasi-stayers} and those near-zero-dose
-groups serve as the controls. See {help whichDIDshouldIuse##designs:HAD sub-cases}.
+groups serve as the controls. See {help whichdidshouldiuse##designs:HAD sub-cases}.
 {p_end}
 
 {p 4 8}
@@ -274,7 +274,7 @@ groups serve as the controls. See {help whichDIDshouldIuse##designs:HAD sub-case
 {p_end}
 
 {phang2}{stata use gentzkowetal_didtextbook.dta, clear}{p_end}
-{phang2}{stata whichDIDshouldIuse prestout cnty90 year numdailies}{p_end}
+{phang2}{stata whichdidshouldiuse prestout cnty90 year numdailies}{p_end}
 
 {p 4 4}
 {cmd:numdailies} is a count of newspapers, so the treatment is neither binary nor
@@ -376,7 +376,7 @@ itself, and fill in known pre-period zeros rather than leaving them missing.
 {p_end}
 
 {p 8 8}
-{cmd:whichDIDshouldIuse Y G T D, detail}{break}
+{cmd:whichdidshouldiuse Y G T D, detail}{break}
 {cmd:display r(n_demoted) " of " r(n_demoted)+r(n_switchers) " apparent switchers were demoted"}
 {p_end}
 
@@ -448,12 +448,12 @@ GitHub:
 {title:Saved results}
 
 {p 4 8}
-{cmd:whichDIDshouldIuse} is {helpb return:rclass}. Read {cmd:r()} {bf:immediately}
+{cmd:whichdidshouldiuse} is {helpb return:rclass}. Read {cmd:r()} {bf:immediately}
 {c -} the next command that returns {cmd:r()} results clears it.
 {p_end}
 
 {p 4 8}
-{cmd:whichDIDshouldIuse} stores the following in {cmd:r()}:
+{cmd:whichdidshouldiuse} stores the following in {cmd:r()}:
 {p_end}
 
 {synoptset 24 tabbed}{...}

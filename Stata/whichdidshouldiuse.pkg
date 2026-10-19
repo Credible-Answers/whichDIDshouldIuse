@@ -1,15 +1,15 @@
 v 3
-d whichDIDshouldIuse: classify a (Y, G, T, D) panel as CLA, SAD, HAD, SFSD or OTHER.
+d whichdidshouldiuse: classify a (Y, G, T, D) panel as CLA, SAD, HAD, SFSD or OTHER.
 d
 d Requires: Stata 14 or later. The HAD quasi-stayer sub-case needs Stata 16+,
 d because did_had is run inside a frame; below that it reports "undetermined".
 d Dependencies (installed automatically on first use): distinct, and for
 d HAD panels without stayers did_had, lprobust (nprobust) and gtools.
 d
-d Distribution-Date: 20261016
+d Distribution-Date: 20261019
 d
-f whichDIDshouldIuse.ado
-f whichDIDshouldIuse.sthlp
+f whichdidshouldiuse.ado
+f whichdidshouldiuse.sthlp
 f moser_voena_didtextbook.dta
 f wolfers2006_didtextbook.dta
 f gentzkowetal_didtextbook.dta

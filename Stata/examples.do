@@ -1,4 +1,4 @@
-*! examples.do -- worked examples for whichDIDshouldIuse
+*! examples.do -- worked examples for whichdidshouldiuse
 *!
 *! Runs the command on fourteen panels covering every design and sub-case:
 *! the four worked examples from the DID textbook, an SFSD pair contrasting a
@@ -24,9 +24,9 @@ log using examples.log, replace text
 
 use "../data/moser_voena_didtextbook.dta", clear
 
-* whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse    patents  subclass  year   twea
-whichDIDshouldIuse    patents  subclass  year   twea, detail	//detail option 
+* whichdidshouldiuse  Y        G         T      D
+whichdidshouldiuse    patents  subclass  year   twea
+whichdidshouldiuse    patents  subclass  year   twea, detail	//detail option 
 
 
 *--- 1b) Wolfers - SAD ---*
@@ -34,8 +34,8 @@ whichDIDshouldIuse    patents  subclass  year   twea, detail	//detail option
 
 use "../data/wolfers2006_didtextbook.dta", clear
 
-* whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse div_rate state year udl, detail
+* whichdidshouldiuse  Y        G         T      D
+whichdidshouldiuse div_rate state year udl, detail
 
 
 *--- 1c) Gentzkow et. al - SFSD ---*
@@ -44,8 +44,8 @@ whichDIDshouldIuse div_rate state year udl, detail
 
 use "../data/gentzkowetal_didtextbook.dta", clear
 
-* whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse prestout cnty90 year numdailies, detail
+* whichdidshouldiuse  Y        G         T      D
+whichdidshouldiuse prestout cnty90 year numdailies, detail
 
 
 *--- 1d) Pierce and Schott - HAD(QS) ---*
@@ -61,8 +61,8 @@ gen lemp2005 = lemp2000 + delta2005
 reshape long lemp, i(indusid) j(year)
 replace ntrgap = 0 if year <= 2000
 
-* whichDIDshouldIuse  Y     G        T     D
-whichDIDshouldIuse    lemp  indusid  year  ntrgap, detail
+* whichdidshouldiuse  Y     G        T     D
+whichdidshouldiuse    lemp  indusid  year  ntrgap, detail
 
 
 
@@ -76,8 +76,8 @@ whichDIDshouldIuse    lemp  indusid  year  ntrgap, detail
 
 use "../data/gentzkowetal_didtextbook.dta", clear
 
-* whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse prestout cnty90 year numdailies, detail
+* whichdidshouldiuse  Y        G         T      D
+whichdidshouldiuse prestout cnty90 year numdailies, detail
 
 *--- 2c) Gentzkow contiuous ---*
 *------------------------------*
@@ -91,8 +91,8 @@ gen double u = runiform() if first_g
 bys cnty90: egen double u_g = max(u)
 gen double numdailies_cont = numdailies + u_g	//+ u ~ U(0,1)
 
-* whichDIDshouldIuse  Y        G         T      D
-whichDIDshouldIuse prestout cnty90 year numdailies_cont, detail
+* whichdidshouldiuse  Y        G         T      D
+whichdidshouldiuse prestout cnty90 year numdailies_cont, detail
 
 
 // --------------------------------------------------------------------------- //
@@ -105,8 +105,8 @@ whichDIDshouldIuse prestout cnty90 year numdailies_cont, detail
 
 use "../data/had_data2.dta", clear	//datasets 1 and 2 from did_had github repository 
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d, detail
 
 
 *--- 3b) Quasi-stayers ---*
@@ -114,8 +114,8 @@ whichDIDshouldIuse 	  y   g   t   d, detail
 
 use "../data/had_data1.dta", clear
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d, detail
 
 
 *--- 3c) No stayers or QS ---*
@@ -150,8 +150,8 @@ input g year y d
 6 2004 70 9
 end
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse    y   g   year d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse    y   g   year d, detail
 
 *II. QS null rejected 
 clear
@@ -166,8 +166,8 @@ bys g: gen t = _n
 gen double d = cond(t >= 6, dose, 0)	//common switch at t = 6
 gen double y = g/100 + t + rnormal()
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d, detail
 
 *III. Mass point, fully deterministic (no input block, no seed)
 *     4 groups tie at the lowest dose, 4 sit above it, all switch at t = 3
@@ -183,8 +183,8 @@ bys g: gen t = _n
 gen double d = cond(t >= 3, dose, 0)	//common switch at t = 3
 gen double y = g + t
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d
 
 di "had_case   = " `"`r(had_case)'"'
 di "had_tie    = " r(had_tie) "   had_d_min = " r(had_d_min)
@@ -210,8 +210,8 @@ input g t y d
 3 4 33 9
 end
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d, detail
 
 *Remark: These are cases where the did_had returns an error or cannot run. Some possible cases are the following:
 *   (i)   the panel is too small for did_had's nonparametric step. It calls lprobust 
@@ -252,8 +252,8 @@ bys g: gen t = _n
 gen byte d = inrange(t, 3, 4)	//0 -> 1 at t=3, back to 0 at t=5
 gen double y = g + t
 
-* whichDIDshouldIuse  Y   G   T   D
-whichDIDshouldIuse 	  y   g   t   d, detail
+* whichdidshouldiuse  Y   G   T   D
+whichdidshouldiuse 	  y   g   t   d, detail
 
 di "design       = " `"`r(design)'"'
 di "is_absorbing = " r(is_absorbing) "   heterog_dose = " r(heterog_dose)
