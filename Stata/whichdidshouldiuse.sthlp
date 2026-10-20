@@ -2,7 +2,6 @@
 {* *! version 1  2026-10-19}{...}
 {viewerjumpto "Syntax" "whichdidshouldiuse##syntax"}{...}
 {viewerjumpto "Description" "whichdidshouldiuse##description"}{...}
-{viewerjumpto "The if/in sample" "whichdidshouldiuse##ifin"}{...}
 {viewerjumpto "The designs" "whichdidshouldiuse##designs"}{...}
 {viewerjumpto "Further detail" "whichdidshouldiuse##detail"}{...}
 {viewerjumpto "Options" "whichdidshouldiuse##options"}{...}
@@ -71,15 +70,15 @@ variable names; no pre-renaming is needed. The command runs inside
 {synoptset 10 tabbed}{...}
 {synopthdr:design}
 {synoptline}
-{synopt:{cmd:CLA}}Binary 0/1, absorbing, everyone switches on the same date,
+{synopt:{cmd:CLA}}Treatment is binary 0/1, absorbing, treated groups all become treated on the same date,
 never-treated controls exist, everyone starts untreated. Estimator: static /
 event-study TWFE. Chapter 3.{p_end}
-{synopt:{cmd:SAD}}As CLA, but switch dates {bf:vary} across groups. Estimator:
+{synopt:{cmd:SAD}}As CLA, but treatment dates {bf:vary} across treated groups. Estimator:
 {cmd:csdid}, {cmd:did_multiplegt_dyn} or {cmd:did2s}. Chapter 6.{p_end}
-{synopt:{cmd:HAD}}Everyone starts untreated and switches on the {bf:same} date, but
-the {bf:dose} varies. Estimator depends on the sub-case below. Chapter 7.{p_end}
-{synopt:{cmd:SFSD}}Groups share a baseline treatment and first switch at
-{bf:different} dates. Allows non-absorbing treatment and heterogeneous baseline
+{synopt:{cmd:HAD}}Everyone starts untreated, treated groups all become treated on the {bf:same} date, but
+the treatment {bf:dose} varies across treated groups. Estimator depends on the sub-case below. Chapter 7.{p_end}
+{synopt:{cmd:SFSD}}Groups experience their first treatment change at
+{bf:different} dates. Allows non-absorbing treatments, non-binary treatments, and heterogeneous baseline
 doses. Estimator: {cmd:did_multiplegt_dyn}. Chapter 8.{p_end}
 {synopt:{cmd:OTHER}}None of the above. Section 8.5.2.{p_end}
 {synoptline}
@@ -95,13 +94,13 @@ most-restrictive-first, so the design you are shown is the tightest one that hol
 
 {p 4 8}
 When the design is HAD, {cmd:r(had_case)} says which control group exists at the
-common switch date, which decides what is identified and which estimator applies:
+common treatment date. This decides what is identified and which estimator applies.
 {p_end}
 
 {synoptset 16 tabbed}{...}
 {synopthdr:r(had_case)}
 {synoptline}
-{synopt:{cmd:stayers}}Some groups keep {it:D} = 0 at the switch. ATT and WATT are
+{synopt:{cmd:stayers}}Some groups keep {it:D} = 0 at the treatment date: they stay untreated. ATT and WATT are
 identified, estimable at the usual sqrt(G) rate. Estimator: {cmd:ivregress 2sls} or
 {cmd:did_multiplegt_stat}.{p_end}
 {synopt:{cmd:quasi-stayers}}No stayers, but {cmd:did_had}'s test does not reject that
@@ -129,19 +128,15 @@ inside a {help frames:frame}, and frames arrived in Stata 16. Any other failure 
 {synoptset 24 tabbed}{...}
 {synopthdr:r(sfsd_case)}
 {synoptline}
-{synopt:{cmd:shared-baseline}}The usual condition: a pair of groups share a baseline
-value and first switch at different dates. Estimator:
+{synopt:{cmd:shared-baseline}}A pair of groups share the same treatment at period one 
+and first switch treatment at different dates. Estimator:
 {cmd:did_multiplegt_dyn}.{p_end}
-{synopt:{cmd:continuous-baseline}}No two groups share a baseline {c -} the signature
-of a continuously distributed treatment at period one. This is the textbook's section
+{synopt:{cmd:continuous-baseline}}No two groups share the same period-one treatment {c -} the signature
+of a continuously distributed baseline treatment. This is the textbook's section
 8.3.5.1 extension; estimate with {cmd:did_multiplegt_dyn}'s {cmd:continuous()}
 option.{p_end}
 {synoptline}
 {p2colreset}{...}
-
-{p 4 8}
-{cmd:r(design)} is {cmd:"SFSD"} either way.
-{p_end}
 
 {marker options}{...}
 {title:Options}
@@ -164,8 +159,7 @@ running both is a useful check.
 {p 4 8}
 {cmd:if} and {cmd:in} are not options but sample qualifiers, and they do more here than
 remove rows: because they are applied before the panel is balanced, a restriction on
-time can change the reported design. See
-{help whichdidshouldiuse##ifin:The if/in sample}.
+time can change the reported design.
 {p_end}
 
 
@@ -201,20 +195,6 @@ full diagnostics block:
 {phang2}{stata whichdidshouldiuse patents subclass year twea, detail}{p_end}
 
 {p 4 4}
-Dropping groups with missing treatment instead of repairing them, as a check that the
-default repairs are not driving the classification:
-{p_end}
-
-{phang2}{stata whichdidshouldiuse patents subclass year twea, strict}{p_end}
-
-{p 4 4}
-Reading the classification programmatically:
-{p_end}
-
-{phang2}{stata quietly whichdidshouldiuse patents subclass year twea}{p_end}
-{phang2}{stata display "`r(design)' estimator `r(estimator)'"}{p_end}
-
-{p 4 4}
 For more examples, the repository contains an {cmd:examples.do} that runs the command across every
 design and sub-case:
 {browse "https://github.com/Credible-Answers/whichDIDshouldIuse"}.
@@ -240,7 +220,7 @@ worked examples for the other designs, one each. All three ship with the package
 
 {p 4 4}
 The treatment is still binary and absorbing, as in the classical case, but the 29
-switching states do not adopt together: first switches occur between 1969 and 1985. That
+treated states do not adopt at the same time: treatment occurs between 1969 and 1985. That
 variation in timing is what separates SAD from CLA.
 {p_end}
 
@@ -259,8 +239,8 @@ wide, so the outcome is assembled and the panel reshaped before the command runs
 {phang2}{stata whichdidshouldiuse lemp indusid year ntrgap}{p_end}
 
 {p 4 4}
-Here every group is untreated at the baseline period 2000 and all 103 groups switch
-together at 2001, so there is no variation in timing at all - what varies is the dose.
+Here every group is untreated at the baseline period 2000 and all 103 groups (industries) become treated in
+2001, so there is no variation in timing {c -} what varies is the treatment dose.
 This is also the example where {cmd:r(had_case)} carries real information: no group stays
 untreated, but {cmd:did_had}'s test does not reject the null that some doses are close to
 zero (p-value 0.140), so the sub-case is {cmd:quasi-stayers} and those near-zero-dose
@@ -278,8 +258,8 @@ groups serve as the controls. See {help whichdidshouldiuse##designs:HAD sub-case
 
 {p 4 4}
 {cmd:numdailies} is a count of newspapers, so the treatment is neither binary nor
-absorbing - counties gain and lose papers repeatedly. None of the three designs above
-applies, but groups sharing a baseline number of papers first switch at different dates,
+absorbing {c -} counties gain and lose papers repeatedly. None of the three designs above
+applies, but counties experience their first change in their numbers of newspapers at different dates,
 between 1872 and 1928, which is what SFSD requires.
 {p_end}
 
@@ -313,7 +293,7 @@ needed.
 "untreated": the command cannot rule out that treatment had already begun. Wherever
 you know a group was untreated, write the zero in rather than leaving the cell blank.
 This matters most in the period just before a group switches, where an unexplained
-blank costs you the group entirely {c -} it is dropped from the switcher pool, which
+blank costs you the group entirely {c -} it is dropped, which
 can change the design you are shown without any error being issued. See
 {it:When demotion changes the classification} below.
 {p_end}
@@ -332,8 +312,7 @@ and each one has its own {cmd:r()} return.
 {cmd:Missing treatment: the strict option} - {cmd:strict} discards instead of
 repairing: any group whose treatment is missing at baseline, or at any period before
 its first switch, is dropped. The repairs keep groups that {cmd:strict} would
-discard, which is usually what you want, but the two modes fail in different ways,
-so agreement between them is evidence that the repairs are not driving the
+discard, which is usually what you want, but agreement between the two modes is evidence that the repairs are not driving the
 classification.
 {p_end}
 
@@ -345,15 +324,13 @@ look like one that loses none.
 {p_end}
 
 {p 4 8}
-{cmd:When demotion changes the classification} - Demotion is the one default repair
-that can change the answer. A group is demoted to a control when its treatment is
-still missing in the period immediately before its first apparent switch: the switch
+{cmd:Missing treatment: when demotion changes the classification} - Demotion is the one default repair
+that can change the answer. A group is demoted to a control when its treatment is missing in the period immediately before its first apparent switch: the switch
 happened somewhere between the last period at which treatment is observed and the
 apparent switch date, so the first switch date cannot be pinned down, and the group
-is kept only as a control, known to be at baseline up to the last period at which its
-treatment was observed. Because the classification is decided entirely by which
-groups remain switchers and when they switch, removing a group from the switcher pool
-can change the design reported. Suppose the design is in truth heterogeneous
+is kept only as a control, up to the last period at which its
+treatment is observed and still equal to its baseline treatment.
+Suppose the design is in truth heterogeneous
 adoption, with some groups taking a dose of 1 and others a dose of 2 at a common
 date. If every dose-2 group has its treatment missing in the period right before that
 date, every dose-2 group is demoted, the surviving switchers all share a dose of 1,
@@ -368,16 +345,7 @@ distinguished one design from another.
 {p 4 8}
 {cmd:Avoiding the problem} - Before classifying, be sure of two things for every
 switcher: the exact date of its first switch, and its treatment status in the period
-immediately before that date. In other words, leave no missing-treatment gap between
-the last period before the switch at which treatment is observed and the switch
-itself, and fill in known pre-period zeros rather than leaving them missing.
-{cmd:r(n_demoted)} is the diagnostic, and {cmd:r(n_switchers)} counts switchers
-{it:after} demotion, so the two together give the share affected:
-{p_end}
-
-{p 8 8}
-{cmd:whichdidshouldiuse Y G T D, detail}{break}
-{cmd:display r(n_demoted) " of " r(n_demoted)+r(n_switchers) " apparent switchers were demoted"}
+immediately before that date. In other words, leave no missing treatment in the period just before a group experiences for the first time a treatment different from its baseline treatment.
 {p_end}
 
 {title:References}
@@ -422,10 +390,10 @@ install any of these yourself: the command installs what is missing on first use
 {p_end}
 
 
-{title:Author}
+{title:Authors}
 
 {p 4 4}
-Alberto Trelles, SciencesPo, France.{break}
+Alberto Trelles, Sciences Po, France.{break}
 Clément de Chaisemartin, Economics Department, Sciences Po, France.{break}
 Anzony Quispe, Brown University, USA.
 {p_end}
@@ -466,11 +434,11 @@ GitHub:
 {cmd:had_case} is {cmd:"undetermined"}{p_end}
 {synopt:{cmd:r(sfsd_case)}}SFSD sub-case; empty unless the design is SFSD{p_end}
 
-{p2col 5 24 28 2: Scalars {c -} the answer}{p_end}
+{p2col 5 24 28 2: Scalars {c -} strict option}{p_end}
 {synopt:{cmd:r(strict)}}1 if {cmd:strict} was used{p_end}
 
 {p2col 5 24 28 2: Scalars {c -} sample sizes}{p_end}
-{synopt:{cmd:r(n_groups)}}groups surviving both filters {c -} the sample actually
+{synopt:{cmd:r(n_groups)}}the sample actually
 classified{p_end}
 {synopt:{cmd:r(n_switchers)}}groups that change treatment at some point{p_end}
 {synopt:{cmd:r(n_never_treated)}}groups that never change treatment and are still
@@ -535,12 +503,6 @@ observed early{p_end}
 switch{p_end}
 {synoptline}
 {p2colreset}{...}
-
-{p 4 8}
-{cmd:is_binary} / {cmd:is_binary01} and {cmd:common_baseline} / {cmd:zero_baseline}
-are loose/strict pairs. Only the strict member drives a branch; the loose one exists
-so that a 4/9 coding is {it:visible} rather than silently handled.
-{p_end}
 
 {p 4 8}
 Each sample-adjustment count is a number of groups. Missing ({cmd:.}) means "not
