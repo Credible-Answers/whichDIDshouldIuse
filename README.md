@@ -1,19 +1,20 @@
 # whichdidshouldiuse
 
-[![Stata](https://img.shields.io/badge/Stata-14%2B-blue)](https://www.stata.com/)
+[![Stata](https://img.shields.io/badge/Stata-16%2B-blue)](https://www.stata.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 **Tell me which difference-in-differences design my panel is, and which estimator to use.**
 
 You pass four variables; the command reports one of **CLA**, **SAD**, **HAD**, **SFSD**
 or **OTHER**, names a suitable estimator, and points you at the relevant chapter of
-de Chaisemartin & D'Haultfœuille's DID textbook.
+de Chaisemartin & D'Haultfoeuille's DID textbook.
 
 It classifies; it does **not** estimate. There are no fixed effects, weights or
 standard-error options, because nothing is being fitted.
 
-Stata 14 and 15 run everything except the HAD quasi-stayer sub-case, which needs frames;
-below 16 those panels are still classified as HAD, with `r(had_case) = "undetermined"`.
+Stata 16 or later. Earlier versions classify every design correctly but cannot reach the
+HAD quasi-stayer sub-case, which runs `did_had` inside a frame; there those panels are
+still reported as HAD, with `r(had_case) = "undetermined"`.
 
 ```stata
 use "moser_voena_didtextbook.dta", clear
@@ -130,35 +131,10 @@ silently loses 400 groups must not look like one that loses none.
 
 `detail` controls **display only**. Every `r()` return is set either way.
 
-### `if` and `in`
-
-Both restrict the sample before anything is classified, and both are applied to **your**
-data — before it is reduced to the four analysis variables — so the condition may name
-any variable in memory under its original name:
-
-```stata
-whichdidshouldiuse y g t d if region == 1
-```
-
-`in` is applied **before** `if`, so its observation numbers refer to the data as you see
-it. (This is Stata's documented behaviour for built-in commands, where `if` and `in` both
-restrict the original data and are intersected. It is worth stating explicitly because
-`did_multiplegt_dyn` applies `if` first, and so reinterprets `in` against a dataset the
-user never saw.)
-
-**The restriction precedes the step that balances the panel**, which has a consequence
-worth knowing. Time is normalized over the periods *present in the restricted sample*, so
-a restriction that removes periods renumbers time and **moves the baseline period**.
-Baseline treatment is read at the first period, so under `if year >= 1920` a group first
-treated in 1915 has baseline 1 rather than 0, and reads as a never-switcher at that
-baseline. The design can change from `CLA` to `OTHER` for this reason alone — the correct
-answer for *that subsample*, but not the same question as the full panel.
-
-Restricting on a **group-level** variable is the clean case: whole groups leave, the
-period grid is untouched. `in` is a blunt instrument on a panel — the mid-panel holes it
-leaves are restored as missing rows and then flow into the missing-treatment rules, which
-can demote a group to a control or drop it. Run with `detail` and read `r(n_demoted)` if
-you use it.
+`if` and `in` are not options but sample qualifiers, and they do more here than remove
+rows: both are applied to your data before the panel is balanced, so a restriction on
+time renumbers the periods and moves the baseline — which can change the reported
+design. A restriction on a group-level variable is the clean case.
 
 ---
 
@@ -238,34 +214,19 @@ answer is reported rather than silently applied.
 | Control stops being observed | Not applicable | Counts as a usable never-treated group only while still known to be at baseline |
 | Missing after a switch | Left missing; the absorbing check rests on observed `D` only | Same |
 
-### When the repairs can change the answer
+Demotion is the one default repair that can change the answer. A group is demoted to a
+control when its treatment is missing in the period immediately before its first apparent
+switch: the switch date cannot be pinned down, so the group is kept only as a control.
 
-The repairs keep groups that `strict` would discard, which is usually what you want. But
-**demotion removes a group from the switcher pool**, and the classification is decided
-entirely by which groups remain switchers and when they switch.
-
-| If demotion removes… | Reported instead |
-|---|---|
-| **Every** switcher | `OTHER`, reported as "no switchers" |
-| All switchers with a dose above 1, leaving only `D ∈ {0,1}` | `CLA` or `SAD` — the panel now looks binary |
-| All switchers at one date, leaving survivors sharing a single date | `CLA` or `HAD` — `same_Fg` flips to 1 |
-
-The first case is benign: the command refuses rather than inventing a design. The other
-two report a *different design* with no error.
-
-**How to check.** `r(n_switchers)` counts switchers *after* demotion, so:
-
-```stata
-whichdidshouldiuse Y G T D, detail
-if !missing(r(n_demoted)) {
-    local looked_like = r(n_switchers) + r(n_demoted)
-    di "demoted: " r(n_demoted) " of " `looked_like' " apparent switchers"
-}
-```
-
-If that share is more than a few percent, treat the classification as provisional and
-re-run with `, strict`. The two modes fail differently, so agreement between them means
-the repairs are not driving the answer.
+Suppose the design is heterogeneous adoption, some groups taking a dose of 1 and others a
+dose of 2 at a common date. If every dose-2 group has treatment missing in the period
+right before that date, all of them are demoted, the survivors share a dose of 1, and the
+panel is reported as classical DID — no error, because the designs nest and the tightest
+one that holds is the one reported. If demotion removes every switcher the command reports
+`OTHER` rather than inventing a design, but it will not warn you when it merely removes
+the switchers that distinguished one design from another. `r(n_demoted)` counts them;
+agreement between the default and `, strict` is evidence the repairs are not driving the
+classification.
 
 ---
 
@@ -274,19 +235,27 @@ the repairs are not driving the answer.
 `whichdidshouldiuse` is `rclass`. Read `r()` **immediately** — the next command that
 returns `r()` results wipes it.
 
-### The answer
+### Macros
 
-| Return | Type | Values |
-|---|---|---|
-| `r(design)` | string | `"CLA"`, `"SAD"`, `"HAD"`, `"SFSD"`, `"OTHER"` |
-| `r(estimator)` | string | Recommended estimator (empty if `OTHER`) |
-| `r(strict)` | 0/1 | 1 if `, strict` was used |
+| Return | Values |
+|---|---|
+| `r(design)` | `"CLA"`, `"SAD"`, `"HAD"`, `"SFSD"`, `"OTHER"` |
+| `r(estimator)` | Recommended estimator (empty if `OTHER`) |
+| `r(had_case)` | HAD sub-case; empty unless the design is HAD |
+| `r(had_why)` | Why the quasi-stayer test could not run; set only when `had_case` is `"undetermined"` |
+| `r(sfsd_case)` | SFSD sub-case; empty unless the design is SFSD |
+
+### Scalars â the `strict` option
+
+| Return | Meaning |
+|---|---|
+| `r(strict)` | 1 if `, strict` was used |
 
 ### Sample sizes
 
 | Return | Meaning |
 |---|---|
-| `r(n_groups)` | Groups surviving both filters — the sample actually classified |
+| `r(n_groups)` | The sample actually classified |
 | `r(n_switchers)` | Groups that change treatment at some point |
 | `r(n_never_treated)` | Groups that never change treatment and are still usable at the earliest switch |
 | `r(n_truncated_controls)` | Controls that stop being observed before the panel ends (default mode only) |
@@ -302,7 +271,7 @@ The inputs to the decision; each answers one yes/no question.
 | `r(is_binary)` | `D` takes only two distinct values — *any* two |
 | `r(is_binary01)` | Those two values are exactly 0 and 1 |
 | `r(is_absorbing)` | Once switched, `D` never changes again |
-| `r(zero_baseline)` | Every group has `d_baseline == 0` |
+| `r(zero_baseline)` | Every group has baseline treatment 0 |
 | `r(common_baseline)` | Every group has the *same* baseline (not necessarily 0) |
 | `r(heterog_dose)` | The size of the first treatment change varies across switchers |
 | `r(sfsd_pair)` | Two groups share a baseline and first switch at different dates |
@@ -315,21 +284,22 @@ coding is *visible* rather than silently handled.
 
 | Return | Meaning |
 |---|---|
-| `r(had_case)` | `"stayers"`, `"quasi-stayers"`, `"none"`, `"undetermined"`; empty unless HAD |
-| `r(had_why)` | Why the quasi-stayer test could not run; set only when `undetermined` |
 | `r(n_stayers)` | Groups still at `D = 0` at the switch date |
 | `r(had_d_min)` | Lowest positive dose at the switch |
 | `r(had_tie)` | 1 if two or more switchers share that lowest dose |
-| `r(n_at_d_min)` / `r(n_above_d_min)` | The two arms of the `1(D > d_min)` 2SLS the tie case suggests; the smaller one binds |
-| `r(qs_stat)`, `r(qs_pval)`, `r(qs_n)` | `did_had`'s QS statistic, p-value and N; missing unless it ran |
+| `r(n_at_d_min)` | Groups at the lowest dose |
+| `r(n_above_d_min)` | Groups with a dose above the lowest positive dose |
+| `r(qs_stat)` | `did_had`'s QS statistic; missing unless it ran |
+| `r(qs_pval)` | Its p-value; missing unless it ran |
+| `r(qs_n)` | Its N; missing unless it ran |
 | `r(qs_reject)` | 1 if quasi-stayers are rejected at 5% |
 
 ### SFSD sub-case
 
 | Return | Meaning |
 |---|---|
-| `r(sfsd_case)` | `"shared-baseline"`, `"continuous-baseline"`; empty unless SFSD |
-| `r(n_baseline_cells)` / `r(n_sfsd_cells)` | Distinct baseline values, and how many contain an SFSD pair |
+| `r(n_baseline_cells)` | Distinct baseline values |
+| `r(n_sfsd_cells)` | How many of those contain an SFSD pair |
 
 ### Switch dates
 
@@ -337,7 +307,8 @@ coding is *visible* rather than silently handled.
 |---|---|
 | `r(common_switch_t)` | normalized — **only meaningful when `r(same_Fg) == 1`** |
 | `r(common_switch_cal)` | calendar |
-| `r(first_switch_cal)` / `r(last_switch_cal)` | calendar — the range |
+| `r(first_switch_cal)` | Earliest first switch, calendar |
+| `r(last_switch_cal)` | Latest first switch, calendar |
 
 ### Sample adjustments
 
@@ -345,7 +316,7 @@ Each is a count of groups affected. `.` means "not assessed in this mode", not z
 
 | Return | Mode | Meaning |
 |---|---|---|
-| `r(n_dropped_baseline)` | `strict` | Dropped for missing `D` at `t == 1` |
+| `r(n_dropped_baseline)` | `strict` | Dropped for missing `D` at the first period |
 | `r(n_dropped_pretreat)` | `strict` | Dropped for a pre-treatment violation |
 | `r(n_dropped_alld)` | default | Dropped because `D` is never observed |
 | `r(n_late_entry)` | default | Baseline taken at a later entry date |
@@ -375,7 +346,7 @@ keeps the warnings but hides the report.
 
 ## Worked examples
 
-[`Stata/examples.do`](Stata/examples.do) runs the command fourteen times across every
+[`Stata/examples.do`](Stata/examples.do) runs the command across every
 design and sub-case. **It is repo-only** — it is not part of the installed package, so
 clone or download this repository to use it. Run it from `Stata/`, since it loads its
 panels via `../data/`; it writes `examples.log` beside itself.
@@ -412,30 +383,43 @@ reproduce the same classification for every example in the help file.
 
 ---
 
-## Citation
+## References
 
 The design definitions and estimator recommendations follow:
 
-> de Chaisemartin, C. and X. D'Haultfœuille. *Difference-in-Differences for Policy
-> Evaluation.* Chapters 3, 6, 7 and 8.
+> de Chaisemartin, C. and D'Haultfoeuille, X. (2026). *Causal Inference with
+> Differences-in-Differences: Credible Answers to Hard Questions.* Princeton University
+> Press.
 
-**If your panel is HAD without stayers**, the sub-case is decided by `did_had`'s
-quasi-untreated test, so cite that package as its authors request — de Chaisemartin
-et al. (2025) plus the two `nprobust` papers underlying its nonparametric step:
+The four example panels:
 
-> de Chaisemartin, C., D. Ciccia, X. D'Haultfœuille and F. Knau (2025).
-> [Difference-in-Differences Estimators When No Unit Remains Untreated](https://arxiv.org/abs/2405.04465).
+> Moser, P. and Voena, A. (2012). [Replication data for "Compulsory Licensing: Evidence
+> from the Trading with the Enemy Act"](https://doi.org/10.3886/E112497V1). Nashville, TN:
+> American Economic Association. Ann Arbor, MI: Inter-university Consortium for Political
+> and Social Research.
 
-> Calonico, S., M. D. Cattaneo and M. H. Farrell (2019).
-> [nprobust: Nonparametric Kernel-Based Estimation and Robust Bias-Corrected Inference](https://nppackages.github.io/references/Calonico-Cattaneo-Farrell_2019_JSS.pdf).
-> *Journal of Statistical Software*, 91(8): 1–33.
+> Wolfers, J. (2006). [Replication data for "Did Unilateral Divorce Laws Raise Divorce
+> Rates? A Reconciliation and New Results"](https://doi.org/10.3886/E116250V1). Nashville,
+> TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for
+> Political and Social Research.
 
-> Calonico, S., M. D. Cattaneo and M. H. Farrell (2018).
-> [On the Effect of Bias Estimation on Coverage Accuracy in Nonparametric Inference](https://nppackages.github.io/references/Calonico-Cattaneo-Farrell_2018_JASA.pdf).
-> *Journal of the American Statistical Association*, 113(522): 767–779.
+> Gentzkow, M., Shapiro, J. M. and Sinkinson, M. (2011). [Replication data for "The Effect
+> of Newspaper Entry and Exit on Electoral Politics"](https://doi.org/10.3886/E112472V1).
+> Nashville, TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium
+> for Political and Social Research.
 
-`did_had` is by Clément de Chaisemartin and co-authors:
-https://github.com/chaisemartinPackages/did_had
+> Pierce, J. R. and Schott, P. K. (2016). [Replication data for "The Surprisingly Swift
+> Decline of US Manufacturing Employment"](https://doi.org/10.3886/E112965V1). Nashville,
+> TN: American Economic Association. Ann Arbor, MI: Inter-university Consortium for
+> Political and Social Research.
+
+---
+
+## Authors
+
+- Alberto Trelles, Sciences Po, France.
+- Clément de Chaisemartin, Economics Department, Sciences Po, France.
+- Anzony Quispe, Brown University, USA.
 
 ---
 
