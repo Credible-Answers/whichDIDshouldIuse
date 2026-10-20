@@ -140,7 +140,37 @@
            on this, so Fg-1 is always a real period.
 ==============================================================================*/
 
+* The public command is a thin wrapper whose only job is to own the
+* varabbrev setting. The classification itself lives in the worker below.
+*
+* Why the split: the worker must run with abbreviation OFF (otherwise
+* "drop t" deletes t_cal -- see section 1), and the setting is GLOBAL to the
+* session, so it has to be put back on every exit path. -preserve- unwinds
+* itself; -set varabbrev- does not. A restore at the foot of the worker only
+* covers the paths the author anticipated: any unexpected error, or a user
+* pressing Break, would leave the caller's session with abbreviation
+* silently switched off. Wrapping the worker in -capture noisily- is what
+* makes the restore unconditional.
+*
+* -capture- clears r(), so -return add- is load-bearing: it forwards the
+* worker's 40-odd returns to the caller. It must come AFTER the restore and
+* BEFORE the exit.
 program define whichdidshouldiuse, rclass
+    version 14
+
+    local varabbrev_was `c(varabbrev)'
+    set varabbrev off
+
+    capture noisily _whichdidshouldiuse `0'
+    local rc = _rc
+
+    set varabbrev `varabbrev_was'
+    return add
+
+    if (`rc') exit `rc'
+end
+
+program define _whichdidshouldiuse, rclass
     version 14
     syntax varlist(min=4 max=4 numeric) [if] [in] [, DETail STRict]
 
@@ -163,10 +193,10 @@ program define whichdidshouldiuse, rclass
         }
     }
 
-    * Turn OFF variable-name abbreviation for the whole program: otherwise
-    * "drop t" deletes t_cal when t_cal is the only t* variable.
-    local varabbrev_was `c(varabbrev)'
-    set varabbrev off
+    * Variable-name abbreviation is already OFF: the wrapper above turns it
+    * off and restores it, so every exit path from here is covered. It must
+    * stay off for the whole worker -- otherwise "drop t" deletes t_cal when
+    * t_cal is the only t* variable.
 
     tokenize `varlist'
     local Yvar "`1'"
@@ -211,13 +241,9 @@ program define whichdidshouldiuse, rclass
     * surface far from its cause: -fillin- on an empty dataset leaves Tmax
     * missing, and the -forvalues k = 1/.- in section 1 then silently does
     * not execute.
-    * Restore varabbrev before exiting: this is the only early exit AFTER
-    * -set varabbrev off- (line above section 0a), and the restore at the foot
-    * of the program is unreachable from here, so without this the caller's
-    * session is left with abbreviation silently switched off.
-    * -preserve- unwinds on its own.
+    * -preserve- unwinds on its own, and the wrapper restores varabbrev on
+    * every exit path, so this exit needs no cleanup of its own.
     if (_N == 0) {
-        set varabbrev `varabbrev_was'
         di as error "no observations; the if/in condition selected nothing"
         exit 2000
     }
@@ -1092,7 +1118,6 @@ program define whichdidshouldiuse, rclass
     * restore BEFORE the returns is safe only because every value below is a
     * scalar or a local, neither of which is part of the dataset.
     restore
-    set varabbrev `varabbrev_was'
 
     return local  design               "`design'"
     return local  estimator            "`estimator'"

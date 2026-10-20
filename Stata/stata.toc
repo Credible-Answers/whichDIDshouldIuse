@@ -1,6 +1,6 @@
 v 3
 d whichdidshouldiuse -- classify a DID design
 d
-d Distribution-Date: 20261019
+d Distribution-Date: 20261020
 d
 p whichdidshouldiuse  Which DID design is my panel?
