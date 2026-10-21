@@ -245,7 +245,7 @@ returns `r()` results wipes it.
 | `r(had_why)` | Why the quasi-stayer test could not run; set only when `had_case` is `"undetermined"` |
 | `r(sfsd_case)` | SFSD sub-case; empty unless the design is SFSD |
 
-### Scalars â the `strict` option
+### Scalars: the `strict` option
 
 | Return | Meaning |
 |---|---|
